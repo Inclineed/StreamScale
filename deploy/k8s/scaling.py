@@ -134,19 +134,45 @@ def mode_snapshot(mode):
     }
 
 
-def inspect(directory):
-    result = kubectl(
-        "exec",
-        "deployment/streamscale-consumer",
-        "--",
-        "/app/.venv/bin/streamscale",
-        "inspect",
-        "--run-dir",
-        directory,
-        capture=True,
-        check=False,
-    )
-    return json.loads(result.stdout) if result.returncode == 0 else None
+def serving_consumer():
+    """A Ready, non-terminating consumer pod, so exec never lands on a pod scaling in."""
+    pods = json.loads(
+        kubectl("get", "pods", "-l", "app=streamscale-consumer", "-o", "json", capture=True).stdout
+    )["items"]
+    for pod in pods:
+        ready = any(
+            condition["type"] == "Ready" and condition["status"] == "True"
+            for condition in pod["status"].get("conditions", [])
+        )
+        if ready and not pod["metadata"].get("deletionTimestamp"):
+            return "pod/" + pod["metadata"]["name"]
+    return None
+
+
+def inspect(directory, attempts=10, wait=3.0):
+    """Reconcile one run. Retries briefly: a scale-in can remove the exec target mid-call.
+
+    Returns None only if every attempt fails, so a real mismatch is still reported.
+    """
+    for attempt in range(attempts):
+        target = serving_consumer()
+        if target is not None:
+            result = kubectl(
+                "exec",
+                target,
+                "--",
+                "/app/.venv/bin/streamscale",
+                "inspect",
+                "--run-dir",
+                directory,
+                capture=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return json.loads(result.stdout)
+        if attempt + 1 < attempts:
+            time.sleep(wait)
+    return None
 
 
 def decisions(folder):

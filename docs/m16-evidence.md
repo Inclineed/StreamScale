@@ -97,6 +97,47 @@ The packaged simulator and forecaster therefore stay calibrated to M7 only
 (`ml/calibration.json`, gate passed); the cluster refit is kept as
 `artifacts/ml/cluster-calibration.json` and its report for the record.
 
+## Scale-down stabilization and pilot (2026-10-28)
+
+Before the campaign the controller's scale-in was changed (scale-up unchanged):
+
+- Hysteresis: the next lower count must keep its predicted delay within
+  0.5 × 3 s = 1.5 s, assuming no later rescue, for 15 consecutive seconds. Any
+  other second restarts the clock.
+- The group must be stable: ready = desired = Kafka group members for 5 s.
+- Only one consumer is removed per change, and at least 20 s after any change.
+- Bounds stay 1–3. Six new unit tests cover these rules.
+
+Pilot 1 (`campaign-20261028T214855-f8b255`, excluded) exposed a harness defect, not
+a data loss: the reconciliation `kubectl exec` targeted a consumer pod that the ML
+controller was scaling in. A re-run of the same inspection passed with 17,834 of
+17,834 facts and zero missing IDs. Fixes: inspection retries on a Ready,
+non-terminating pod, and the ML controller is paused after drain, before
+reconciliation and the controlled restart.
+
+Pilot 2 (`campaign-20261028T220530-c90ec5`, scratch, `eval:` repetition-1 shapes):
+all 4 runs reconciled before and after restart with zero missing or duplicate IDs;
+audit passed (941 samples).
+
+| Scenario | Mode | p95 (s) | Peak lag | Replica-s | Scale changes (up/down) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| flash-sale | ML-predictive | 4.59 | 1,100 | 149 | 3 (1/2) |
+| flash-sale | ML-reactive | 4.28 | 1,026 | 153 | 3 (1/2) |
+| repeated-sales | ML-predictive | 3.74 | 739 | 530 | 9 (4/5) |
+| repeated-sales | ML-reactive | 5.26 | 1,089 | 502 | 11 (4/7) |
+
+Single scratch runs; not evidence. Every scale-in was one consumer and none came
+within 15 s of the previous scale-in. ML-reactive still dropped to one consumer
+2–3 s before two of the repeated sales, then had to scale up again; ML-predictive
+kept two consumers through those gaps. That difference is what the campaign
+measures, so it was not tuned away.
+
+Frozen after the pilot: controller settings in `experiments/protocols/v3.json`
+(target 3 s, ready delay 5 s, hold 15 s, margin 0.5, interval 20 s, stable group
+5 s) and forecaster sha256 `1c5304be…d491` (retrained for the new controller on
+`train:` seeds, quantile 0.9). The protocol pins the hash; `freeze()` refuses any
+other model.
+
 ## Next
 
 1. `./streamscale.sh experiments-v3 --fresh` (about 3.5 hours; keep the host awake),

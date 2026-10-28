@@ -1,7 +1,13 @@
 {
   "protocol_version": 3,
   "description": "M16: five scaling modes on five pilot-calibrated shapes; frozen before measured executions",
-  "modes": ["fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive"],
+  "modes": [
+    "fixed",
+    "cpu-hpa",
+    "lag-keda",
+    "ml-reactive",
+    "ml-predictive"
+  ],
   "repetitions": 3,
   "order_seed": 4343,
   "warmup_seconds": 30,
@@ -14,16 +20,31 @@
   "maximum_surge_rate": 1000,
   "shape_seed_namespace": "eval",
   "scenarios": {
-    "steady": {"seed": 101},
-    "flash-sale": {"seed": 202},
-    "overload-recovery": {"seed": 303, "recovery_after_sale": true},
-    "ramp": {"seed": 404},
-    "repeated-sales": {"seed": 505}
+    "steady": {
+      "seed": 101
+    },
+    "flash-sale": {
+      "seed": 202
+    },
+    "overload-recovery": {
+      "seed": 303,
+      "recovery_after_sale": true
+    },
+    "ramp": {
+      "seed": 404
+    },
+    "repeated-sales": {
+      "seed": 505
+    }
   },
   "autoscaler": {
     "target_delay_seconds": 3,
     "ready_delay_seconds": 5,
-    "scale_down_hold_seconds": 10,
-    "scale_down_interval_seconds": 20
-  }
+    "scale_down_hold_seconds": 15,
+    "scale_down_margin": 0.5,
+    "scale_down_interval_seconds": 20,
+    "stable_group_seconds": 5
+  },
+  "model_sha256": "1c5304befb480e2412fe3168ff35ed1db1977b6e557702d739827b0e25edd491",
+  "frozen_note": "Controller settings and model frozen after the 2026-10-28 ML pilot; change only with a new protocol version."
 }

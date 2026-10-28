@@ -100,7 +100,9 @@ def main() -> int:
     autoscaler.add_argument("--capacity", type=float, required=True)
     autoscaler.add_argument("--target-delay", type=float, default=3.0)
     autoscaler.add_argument("--ready-delay", type=float, default=5.0)
-    autoscaler.add_argument("--scale-down-hold", type=float, default=10.0)
+    autoscaler.add_argument("--scale-down-hold", type=float, default=15.0)
+    autoscaler.add_argument("--scale-down-margin", type=float, default=0.5)
+    autoscaler.add_argument("--stable-group", type=float, default=5.0)
     autoscaler.add_argument("--scale-down-interval", type=float, default=20.0)
     args = parser.parse_args()
     try:
@@ -195,6 +197,8 @@ def main() -> int:
                 target_delay_seconds=args.target_delay,
                 ready_delay_seconds=args.ready_delay,
                 scale_down_hold_seconds=args.scale_down_hold,
+                scale_down_margin=args.scale_down_margin,
+                stable_group_seconds=args.stable_group,
                 scale_down_interval_seconds=args.scale_down_interval,
             )
             stop = Event()

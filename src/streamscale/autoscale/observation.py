@@ -21,6 +21,8 @@ class Observation:
     ready: int
     desired: int
     fresh_at: float | None = None
+    # Live Kafka consumer-group members; None when the source cannot report it.
+    members: int | None = None
 
     def __post_init__(self):
         if len(self.highs) != PARTITIONS or len(self.lags) != PARTITIONS:
@@ -46,6 +48,7 @@ class Observation:
             "ready": self.ready,
             "desired": self.desired,
             "fresh_at": self.fresh_at,
+            "members": self.members,
         }
 
     @classmethod
@@ -57,6 +60,7 @@ class Observation:
             ready=int(value["ready"]),
             desired=int(value["desired"]),
             fresh_at=None if value.get("fresh_at") is None else float(value["fresh_at"]),
+            members=None if value.get("members") is None else int(value["members"]),
         )
 
 
@@ -68,6 +72,7 @@ class ExporterSample:
     highs: tuple[int, ...]
     lags: tuple[int, ...]
     success: float | None
+    members: int | None = None
 
 
 def exporter_sample(payload: str, run_id: str | None = None) -> ExporterSample:
@@ -75,7 +80,7 @@ def exporter_sample(payload: str, run_id: str | None = None) -> ExporterSample:
 
     Raises ValueError when any partition is missing, so a policy never acts on partial data.
     """
-    highs, lags, success, identity = {}, {}, None, {}
+    highs, lags, success, members, identity = {}, {}, None, None, {}
     for family in text_string_to_metric_families(payload):
         for sample in family.samples:
             if run_id is not None and sample.labels.get("run_id") not in {None, run_id}:
@@ -86,6 +91,8 @@ def exporter_sample(payload: str, run_id: str | None = None) -> ExporterSample:
                 lags[int(sample.labels["partition"])] = int(sample.value)
             elif sample.name == "streamscale_exporter_last_success_unixtime":
                 success = float(sample.value)
+            elif sample.name == "streamscale_consumer_replicas":
+                members = int(sample.value)
             else:
                 continue
             for key in ("run_id", "mode", "scenario"):
@@ -103,6 +110,7 @@ def exporter_sample(payload: str, run_id: str | None = None) -> ExporterSample:
         highs=tuple(highs[part] for part in range(PARTITIONS)),
         lags=tuple(lags[part] for part in range(PARTITIONS)),
         success=success,
+        members=members,
     )
 
 

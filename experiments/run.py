@@ -37,7 +37,13 @@ from manage import (  # noqa: E402
     kubectl,
     workflow,
 )  # noqa: E402
-from scaling import ML_MODES, V2_MODES, inspect, mode_snapshot  # noqa: E402
+from scaling import (  # noqa: E402
+    ML_MODES,
+    V2_MODES,
+    inspect,
+    mode_snapshot,
+    serving_consumer,
+)
 from streamscale_workload.shapes import (  # noqa: E402
     SHAPE_VERSION,
     require_namespace,
@@ -168,6 +174,12 @@ def freeze_v3(protocol, capacity, steady, surge):
             }
     frozen["autoscaler"] = dict(protocol["autoscaler"], capacity=capacity)
     frozen["model"] = model_identity()
+    pinned = protocol.get("model_sha256")
+    if pinned and frozen["model"]["sha256"] != pinned:
+        raise RuntimeError(
+            "The packaged forecaster differs from the model pinned in the protocol; "
+            "retraining after the pilot needs a new protocol version"
+        )
     frozen["frozen_at"] = utc_now()
     return frozen
 
@@ -270,7 +282,7 @@ def copy_run(name, destination):
     for filename in ("run.json", "manifest.jsonl", "acknowledgements.jsonl", "inspection.json"):
         result = kubectl(
             "exec",
-            "deployment/streamscale-consumer",
+            serving_consumer() or "deployment/streamscale-consumer",
             "--",
             "/bin/cat",
             f"/runs/{name}/{filename}",
@@ -349,6 +361,8 @@ def chart_autoscaler(settings):
         "targetDelaySeconds": settings["target_delay_seconds"],
         "readyDelaySeconds": settings["ready_delay_seconds"],
         "scaleDownHoldSeconds": settings["scale_down_hold_seconds"],
+        "scaleDownMargin": settings["scale_down_margin"],
+        "stableGroupSeconds": settings["stable_group_seconds"],
         "scaleDownIntervalSeconds": settings["scale_down_interval_seconds"],
     }
 
@@ -359,6 +373,20 @@ def autoscaler_decisions(destination):
         payload = json.loads(fetch(endpoint + "/decisions"))
     write_json(destination / "autoscaler-decisions.json", payload)
     return payload
+
+
+def pause_autoscaler(destination):
+    kubectl("scale", "deployment/streamscale-autoscaler", "--replicas=0")
+    kubectl(
+        "wait",
+        "--for=delete",
+        "pod",
+        "-l",
+        "app=streamscale-autoscaler",
+        "--timeout=60s",
+        check=False,
+    )
+    write_json(destination / "autoscaler-paused.json", {"paused_at": utc_now()})
 
 
 def capture(metadata, cell, configuration, campaign):
@@ -477,8 +505,13 @@ def capture(metadata, cell, configuration, campaign):
         else:
             raise RuntimeError("The run did not drain before its experiment deadline")
     decisions = None
-    if cell["mode"] in ML_MODES and configuration["phase"] == "measured":
-        decisions = autoscaler_decisions(destination)
+    if cell["mode"] in ML_MODES:
+        if configuration["phase"] == "measured":
+            decisions = autoscaler_decisions(destination)
+        # The measured window has drained. Pause the controller so the reconciliation and
+        # controlled-restart checks run on a fixed, stable group instead of racing a
+        # scale-in. The next deploy's clear_scaling removes it and Helm recreates it.
+        pause_autoscaler(destination)
     before = inspect("/runs/" + info["run_name"])
     if before is None:
         raise RuntimeError("Pre-restart SQL/DLQ reconciliation failed")
@@ -486,7 +519,7 @@ def capture(metadata, cell, configuration, campaign):
     run = copy_run(info["run_name"], destination)
     result = kubectl(
         "exec",
-        "deployment/streamscale-consumer",
+        serving_consumer() or "deployment/streamscale-consumer",
         "--",
         "/app/.venv/bin/streamscale",
         "measurements",

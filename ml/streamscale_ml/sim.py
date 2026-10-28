@@ -67,7 +67,10 @@ class View:
     cpu_utilization: float | None  # percent of the 100m request, delayed like metrics-server
 
     def observation(self):
-        return Observation(self.at, self.highs, self.lags, self.ready, self.desired, self.at)
+        # Group membership settles with readiness in this model (members == ready).
+        return Observation(
+            self.at, self.highs, self.lags, self.ready, self.desired, self.at, self.ready
+        )
 
 
 class FixedController:

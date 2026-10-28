@@ -63,6 +63,8 @@
         "targetDelaySeconds",
         "readyDelaySeconds",
         "scaleDownHoldSeconds",
+        "scaleDownMargin",
+        "stableGroupSeconds",
         "scaleDownIntervalSeconds"
       ],
       "properties": {
@@ -70,6 +72,8 @@
         "targetDelaySeconds": {"type": "number", "exclusiveMinimum": 0},
         "readyDelaySeconds": {"type": "number", "minimum": 0},
         "scaleDownHoldSeconds": {"type": "number", "minimum": 0},
+        "scaleDownMargin": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "stableGroupSeconds": {"type": "number", "minimum": 0},
         "scaleDownIntervalSeconds": {"type": "number", "minimum": 0}
       }
     },

@@ -172,3 +172,10 @@ def test_reuse_refuses_changed_raw_evidence(tmp_path):
     (directory / "samples.jsonl").write_text("tampered")
     with pytest.raises(RuntimeError, match="checksum mismatch"):
         verify_evidence(directory.parent, [row])
+
+
+def test_v3_refuses_a_forecaster_other_than_the_pinned_one():
+    protocol = load_protocol("v3")
+    assert protocol["model_sha256"] == freeze(protocol, 130.497)["model"]["sha256"]
+    with pytest.raises(RuntimeError, match="pinned"):
+        freeze(protocol | {"model_sha256": "0" * 64}, 130.497)

@@ -30,8 +30,13 @@ class PlannerConfig:
     capacity_per_consumer: float = 130.0
     ready_delay_seconds: float = 5.0
     rebalance_pause_seconds: float = 1.0
-    scale_down_hold_seconds: float = 10.0
+    # Scale-in hysteresis: the next lower count must keep its predicted delay within
+    # ``scale_down_margin`` × target, with no later rescue assumed, for this many
+    # consecutive seconds, while the group is ready and stable. One consumer at a time.
+    scale_down_hold_seconds: float = 15.0
+    scale_down_margin: float = 0.5
     scale_down_interval_seconds: float = 20.0
+    stable_group_seconds: float = 5.0
     stale_after_seconds: float = 5.0
     # Per-consumer capacity multipliers when 1, 2 or 3 consumers share the node.
     capacity_scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
@@ -47,6 +52,8 @@ class PlannerConfig:
     def __post_init__(self):
         if len(self.capacity_scale) != PARTITIONS or min(self.capacity_scale) <= 0:
             raise ValueError("Capacity scale needs three positive multipliers")
+        if not 0 < self.scale_down_margin <= 1:
+            raise ValueError("Scale-down margin must be in (0, 1]")
         if self.forecast_confirmations < 1:
             raise ValueError("Forecast confirmations must be at least 1")
         if not 1 <= self.min_replicas <= self.max_replicas <= PARTITIONS:
@@ -63,6 +70,7 @@ class PlannerConfig:
             self.rebalance_pause_seconds,
             self.scale_down_hold_seconds,
             self.scale_down_interval_seconds,
+            self.stable_group_seconds,
             self.stale_after_seconds,
         )
         if min(nonnegative) < 0:
@@ -166,8 +174,21 @@ class Planner:
         self.first_seen: float | None = None
         self.last_change_at: float | None = None
         self.last_scale_up_at: float | None = None
-        self.qualified_since: dict[int, float] = {}
         self.forecast_streak = 0
+        self.calm_since: float | None = None
+        self.group_key: tuple | None = None
+        self.group_since: float | None = None
+
+    def group_stable(self, observation: Observation):
+        """Seconds the group has been fully ready at its desired size, or None if not."""
+        desired = observation.desired
+        settled = observation.ready == desired and (
+            observation.members is None or observation.members == desired
+        )
+        key = (desired, observation.ready, observation.members)
+        if key != self.group_key:
+            self.group_key, self.group_since = key, observation.at
+        return observation.at - self.group_since if settled else None
 
     def remaining_start(self, now, ready, desired, candidate):
         """Seconds until ``candidate`` consumers could be serving.
@@ -263,11 +284,19 @@ class Planner:
             delays = committed
             best = min(delays.values())
             wanted = min(n for n, delay in delays.items() if delay <= best + MATERIAL_SECONDS)
-        for candidate in list(self.qualified_since):
-            if candidate not in qualified:
-                del self.qualified_since[candidate]
-        for candidate in qualified:
-            self.qualified_since.setdefault(candidate, now)
+        stable = self.group_stable(observation)
+        lower = current - 1
+        # Hysteresis: calm only while one fewer consumer stays well inside the target with
+        # no later rescue assumed. Any other second restarts the clock.
+        calm = (
+            lower >= config.min_replicas
+            and committed[lower] <= config.scale_down_margin * config.target_delay_seconds
+        )
+        if calm:
+            if self.calm_since is None:
+                self.calm_since = now
+        else:
+            self.calm_since = None
 
         forecast_only = False
         if wanted > current and baseline is not None and baseline != rates:
@@ -299,32 +328,8 @@ class Planner:
             if forecast_only:
                 reason = "forecast: " + reason
             chosen = wanted
-        elif wanted < current:
-            held = now - self.qualified_since.get(wanted, now)
-            since_change = (
-                float("inf") if self.last_change_at is None else now - self.last_change_at
-            )
-            if held < config.scale_down_hold_seconds:
-                chosen, reason = (
-                    current,
-                    (
-                        f"{wanted} meets the target; holding {current} until it has for "
-                        f"{config.scale_down_hold_seconds:g}s"
-                    ),
-                )
-            elif since_change < config.scale_down_interval_seconds:
-                chosen, reason = (
-                    current,
-                    (f"{wanted} meets the target; last change was {since_change:.0f}s ago"),
-                )
-            else:
-                chosen, reason = (
-                    wanted,
-                    (
-                        f"{wanted} has met the {config.target_delay_seconds:g}s target for "
-                        f"{held:.0f}s; scaling in"
-                    ),
-                )
+        elif current > config.min_replicas and wanted < current:
+            chosen, reason = self.scale_in(observation, committed, current, stable)
         else:
             chosen, reason = current, f"{current} meets the {config.target_delay_seconds:g}s target"
             if not qualified:
@@ -335,6 +340,33 @@ class Planner:
 
         if chosen != observation.desired:
             self.last_change_at = now
+            self.calm_since = None
             if chosen > observation.desired:
                 self.last_scale_up_at = now
         return Decision(now, chosen, observation.desired, reason, rate, forecast, delays)
+
+    def scale_in(self, observation, committed, current, stable):
+        """Remove one consumer only after a sustained, safe, stable calm period."""
+        config = self.config
+        now = observation.at
+        lower = current - 1
+        safe = config.scale_down_margin * config.target_delay_seconds
+        calm = 0.0 if self.calm_since is None else now - self.calm_since
+        since_change = float("inf") if self.last_change_at is None else now - self.last_change_at
+        if self.calm_since is None:
+            return current, (
+                f"{lower} would meet the target but not within {safe:g}s; holding {current}"
+            )
+        if calm < config.scale_down_hold_seconds:
+            return current, (
+                f"{lower} has stayed within {safe:g}s for {calm:.0f}s of "
+                f"{config.scale_down_hold_seconds:g}s; holding {current}"
+            )
+        if stable is None or stable < config.stable_group_seconds:
+            return current, f"waiting for {current} ready, stable consumers before scaling in"
+        if since_change < config.scale_down_interval_seconds:
+            return current, f"{lower} is safe; last change was {since_change:.0f}s ago"
+        return lower, (
+            f"{lower} stayed within {safe:g}s (target {config.target_delay_seconds:g}s) "
+            f"for {calm:.0f}s with a stable group; removing one consumer"
+        )

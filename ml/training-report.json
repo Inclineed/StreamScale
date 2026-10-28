@@ -1,160 +1,160 @@
 {
   "model": "src/streamscale/autoscale/models/forecaster-v1.json",
-  "sha256": "c0a4796b9cadc1e4639fdfae498995f035044aab1a568934c147053fd7c2a1c6",
-  "quantile": 0.9,
+  "sha256": "1c5304befb480e2412fe3168ff35ed1db1977b6e557702d739827b0e25edd491",
+  "quantile": 0.6,
   "rows": 118105,
   "holdout_rows": 23580,
-  "seconds": 87.3,
+  "seconds": 89.8,
   "holdout_quality": {
     "0-4s": {
       "all": {
-        "pinball": 0.0582,
-        "persistence_pinball": 0.0926,
-        "coverage": 0.9041,
+        "pinball": 0.0686,
+        "persistence_pinball": 0.0694,
+        "coverage": 0.6249,
         "persistence_coverage": 0.4257
       },
       "flash-sale": {
-        "pinball": 0.0916,
-        "persistence_pinball": 0.0873,
-        "coverage": 0.9027,
+        "pinball": 0.0707,
+        "persistence_pinball": 0.0657,
+        "coverage": 0.6264,
         "persistence_coverage": 0.4589
       },
       "overload-recovery": {
-        "pinball": 0.0744,
-        "persistence_pinball": 0.0704,
-        "coverage": 0.9094,
+        "pinball": 0.0576,
+        "persistence_pinball": 0.0533,
+        "coverage": 0.5972,
         "persistence_coverage": 0.5877
       },
       "ramp": {
-        "pinball": 0.0267,
-        "persistence_pinball": 0.0761,
-        "coverage": 0.8841,
+        "pinball": 0.0389,
+        "persistence_pinball": 0.0573,
+        "coverage": 0.633,
         "persistence_coverage": 0.2949
       },
       "repeated-sales": {
-        "pinball": 0.0759,
-        "persistence_pinball": 0.1336,
-        "coverage": 0.8963,
+        "pinball": 0.105,
+        "persistence_pinball": 0.0995,
+        "coverage": 0.6367,
         "persistence_coverage": 0.4216
       },
       "steady": {
-        "pinball": 0.0038,
-        "persistence_pinball": 0.0019,
-        "coverage": 0.9735,
+        "pinball": 0.004,
+        "persistence_pinball": 0.0026,
+        "coverage": 0.5932,
         "persistence_coverage": 0.4986
       }
     },
     "5-9s": {
       "all": {
-        "pinball": 0.1121,
-        "persistence_pinball": 0.1922,
-        "coverage": 0.8977,
+        "pinball": 0.1575,
+        "persistence_pinball": 0.1727,
+        "coverage": 0.6216,
         "persistence_coverage": 0.4621
       },
       "flash-sale": {
-        "pinball": 0.1629,
-        "persistence_pinball": 0.1822,
-        "coverage": 0.8757,
+        "pinball": 0.1716,
+        "persistence_pinball": 0.1648,
+        "coverage": 0.6395,
         "persistence_coverage": 0.4773
       },
       "overload-recovery": {
-        "pinball": 0.1322,
-        "persistence_pinball": 0.1473,
-        "coverage": 0.8785,
+        "pinball": 0.2301,
+        "persistence_pinball": 0.1353,
+        "coverage": 0.5197,
         "persistence_coverage": 0.61
       },
       "ramp": {
-        "pinball": 0.0758,
-        "persistence_pinball": 0.1584,
-        "coverage": 0.9248,
+        "pinball": 0.0828,
+        "persistence_pinball": 0.1439,
+        "coverage": 0.6141,
         "persistence_coverage": 0.3682
       },
       "repeated-sales": {
-        "pinball": 0.1175,
-        "persistence_pinball": 0.2765,
-        "coverage": 0.8766,
+        "pinball": 0.2115,
+        "persistence_pinball": 0.2448,
+        "coverage": 0.6015,
         "persistence_coverage": 0.4478
       },
       "steady": {
-        "pinball": 0.0927,
-        "persistence_pinball": 0.0041,
-        "coverage": 0.9664,
+        "pinball": 0.0102,
+        "persistence_pinball": 0.0093,
+        "coverage": 0.8199,
         "persistence_coverage": 0.5295
       }
     },
     "10-14s": {
       "all": {
-        "pinball": 0.1416,
-        "persistence_pinball": 0.2893,
-        "coverage": 0.9016,
+        "pinball": 0.1969,
+        "persistence_pinball": 0.2736,
+        "coverage": 0.6179,
         "persistence_coverage": 0.5282
       },
       "flash-sale": {
-        "pinball": 0.1784,
-        "persistence_pinball": 0.2755,
-        "coverage": 0.8791,
+        "pinball": 0.2093,
+        "persistence_pinball": 0.2627,
+        "coverage": 0.6887,
         "persistence_coverage": 0.5276
       },
       "overload-recovery": {
-        "pinball": 0.1337,
-        "persistence_pinball": 0.2229,
-        "coverage": 0.8418,
+        "pinball": 0.2959,
+        "persistence_pinball": 0.2165,
+        "coverage": 0.5962,
         "persistence_coverage": 0.649
       },
       "ramp": {
-        "pinball": 0.1367,
-        "persistence_pinball": 0.239,
-        "coverage": 0.9405,
+        "pinball": 0.1201,
+        "persistence_pinball": 0.2291,
+        "coverage": 0.6181,
         "persistence_coverage": 0.4432
       },
       "repeated-sales": {
-        "pinball": 0.1277,
-        "persistence_pinball": 0.4153,
-        "coverage": 0.8859,
+        "pinball": 0.2512,
+        "persistence_pinball": 0.3861,
+        "coverage": 0.5777,
         "persistence_coverage": 0.5287
       },
       "steady": {
-        "pinball": 0.177,
-        "persistence_pinball": 0.0056,
-        "coverage": 0.9727,
+        "pinball": 0.0219,
+        "persistence_pinball": 0.0156,
+        "coverage": 0.7254,
         "persistence_coverage": 0.5679
       }
     },
     "15-19s": {
       "all": {
-        "pinball": 0.1506,
-        "persistence_pinball": 0.3692,
-        "coverage": 0.9049,
+        "pinball": 0.2446,
+        "persistence_pinball": 0.3577,
+        "coverage": 0.6348,
         "persistence_coverage": 0.5562
       },
       "flash-sale": {
-        "pinball": 0.1799,
-        "persistence_pinball": 0.3652,
-        "coverage": 0.8412,
+        "pinball": 0.2864,
+        "persistence_pinball": 0.3569,
+        "coverage": 0.65,
         "persistence_coverage": 0.5603
       },
       "overload-recovery": {
-        "pinball": 0.152,
-        "persistence_pinball": 0.2954,
-        "coverage": 0.8063,
+        "pinball": 0.3554,
+        "persistence_pinball": 0.2956,
+        "coverage": 0.5604,
         "persistence_coverage": 0.6582
       },
       "ramp": {
-        "pinball": 0.1437,
-        "persistence_pinball": 0.307,
-        "coverage": 0.9456,
+        "pinball": 0.1845,
+        "persistence_pinball": 0.3017,
+        "coverage": 0.619,
         "persistence_coverage": 0.4852
       },
       "repeated-sales": {
-        "pinball": 0.1333,
-        "persistence_pinball": 0.5219,
-        "coverage": 0.9057,
+        "pinball": 0.2872,
+        "persistence_pinball": 0.4955,
+        "coverage": 0.5886,
         "persistence_coverage": 0.5557
       },
       "steady": {
-        "pinball": 0.1999,
-        "persistence_pinball": 0.0072,
-        "coverage": 0.9984,
+        "pinball": 0.0335,
+        "persistence_pinball": 0.0219,
+        "coverage": 0.922,
         "persistence_coverage": 0.5869
       }
     }
@@ -166,56 +166,56 @@
     "candidates": [
       {
         "quantile": 0.5,
-        "target_met": 0.5,
-        "median_replica_seconds": 134.0,
+        "target_met": 0.55,
+        "median_replica_seconds": 162.0,
         "per_shape_target_met": {
           "steady": 1.0,
           "flash-sale": 0.0,
           "overload-recovery": 0.0,
           "ramp": 1.0,
-          "repeated-sales": 0.5
+          "repeated-sales": 0.75
         }
       },
       {
         "quantile": 0.6,
-        "target_met": 0.5,
-        "median_replica_seconds": 134.0,
+        "target_met": 0.55,
+        "median_replica_seconds": 160.0,
         "per_shape_target_met": {
           "steady": 1.0,
           "flash-sale": 0.0,
           "overload-recovery": 0.0,
           "ramp": 1.0,
-          "repeated-sales": 0.5
+          "repeated-sales": 0.75
         }
       },
       {
         "quantile": 0.7,
-        "target_met": 0.5,
-        "median_replica_seconds": 135.5,
+        "target_met": 0.55,
+        "median_replica_seconds": 164.0,
         "per_shape_target_met": {
           "steady": 1.0,
           "flash-sale": 0.0,
           "overload-recovery": 0.0,
           "ramp": 1.0,
-          "repeated-sales": 0.5
+          "repeated-sales": 0.75
         }
       },
       {
         "quantile": 0.8,
-        "target_met": 0.52,
-        "median_replica_seconds": 134.0,
+        "target_met": 0.55,
+        "median_replica_seconds": 162.0,
         "per_shape_target_met": {
           "steady": 1.0,
           "flash-sale": 0.0,
           "overload-recovery": 0.0,
           "ramp": 1.0,
-          "repeated-sales": 0.6
+          "repeated-sales": 0.75
         }
       },
       {
         "quantile": 0.9,
         "target_met": 0.55,
-        "median_replica_seconds": 138.0,
+        "median_replica_seconds": 182.0,
         "per_shape_target_met": {
           "steady": 1.0,
           "flash-sale": 0.0,
@@ -225,6 +225,6 @@
         }
       }
     ],
-    "chosen_quantile": 0.9
+    "chosen_quantile": 0.6
   }
 }

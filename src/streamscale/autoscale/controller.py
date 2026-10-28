@@ -56,6 +56,7 @@ class Controller:
             ready=ready,
             desired=desired,
             fresh_at=sample.success,
+            members=sample.members,
         )
         decision = self.policy.step(observation)
         applied = False

@@ -46,6 +46,9 @@ def observation_from(sample):
             ready=int(deployment.get("ready") or 0),
             desired=int(deployment["desired"]),
             fresh_at=float(sample["sampled_at"]),
+            members=len(group["members"])
+            if isinstance(group := kafka.get("group"), dict) and "members" in group
+            else None,
         ),
         run.get("run_id"),
     )

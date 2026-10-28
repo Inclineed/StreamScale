@@ -35,8 +35,11 @@ So the controller is model-predictive control over a small queue model:
    fewest consumers whose predicted queueing delay stays within 3 s. Delay before
    any new pod could start is excluded, because no choice can change it. Smaller
    counts are judged assuming the next decision may still add consumers.
-4. **Act**: scale up at once; scale down only after the lower count has met the
-   target for 10 s and at least 20 s after the last change. Stale data holds.
+4. **Act**: scale up at once. Scale down by one consumer only after the next
+   lower count has kept its predicted delay within 1.5 s (half the target, with
+   no later rescue) for 15 consecutive seconds, the group has been ready and
+   stable (ready = desired = Kafka members) for 5 s, and at least 20 s have
+   passed since the last change. Stale data holds.
 
 Reinforcement learning and deep sequence models were considered and rejected for
 this setup: they need far more training data than a local cluster produces, and a

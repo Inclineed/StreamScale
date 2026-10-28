@@ -282,3 +282,82 @@ def test_planner_uses_capacity_per_consumer_count():
     assert simulate((0, 0, 0), rates, 3, 3, 0, slow) > CONFIG.target_delay_seconds
     with pytest.raises(ValueError, match="three positive"):
         PlannerConfig(capacity_scale=(1.0, 0.0, 1.0))
+
+
+def steady_three(seconds, rate=52, members=3, start=0, high=0, policy=None):
+    """Drive a policy at 3 consumers under steady load; return (policy, decisions, high)."""
+    policy = policy or ReactivePolicy(CONFIG)
+    decisions = []
+    replicas = 3
+    for second in range(start, start + seconds):
+        high += rate
+        obs = Observation(
+            float(second),
+            (high // 3, high // 3, high - 2 * (high // 3)),
+            (0, 0, 0),
+            replicas,
+            replicas,
+            float(second),
+            members if replicas == 3 else replicas,
+        )
+        decision = policy.step(obs)
+        decisions.append(decision)
+        replicas = decision.replicas
+    return policy, decisions, high
+
+
+def test_scale_down_waits_15_calm_seconds_and_removes_one_consumer_at_a_time():
+    _, decisions, _ = steady_three(120)
+    changes = [(d.at, d.previous, d.replicas) for d in decisions if d.changed]
+    assert changes, "never scaled in"
+    assert all(after == before - 1 for _, before, after in changes)
+    first = changes[0][0]
+    assert first >= CONFIG.scale_down_hold_seconds
+    assert all(d.replicas >= 1 for d in decisions)
+    if len(changes) > 1:
+        assert changes[1][0] - first >= CONFIG.scale_down_interval_seconds
+    assert decisions[-1].replicas == 1
+
+
+def test_scale_down_requires_a_stable_ready_group():
+    # Kafka still reports two members while three pods are ready: never scale in.
+    _, decisions, _ = steady_three(60, members=2)
+    assert not any(d.changed for d in decisions)
+    assert "stable" in decisions[-1].reason
+
+
+def test_delay_near_the_target_is_not_safe_enough_to_scale_in():
+    # About 250/s: two consumers meet the 3 s target but not the 1.5 s safety margin.
+    planner = Planner(CONFIG)
+
+    def obs(t, lag):
+        return Observation(float(t), (0, 0, 0), (lag, lag, lag), 3, 3, float(t), 3)
+
+    for second in range(40):
+        decision = planner.decide(obs(second, 60), [255] * CONFIG.horizon_seconds)
+    assert decision.replicas == 3
+    assert "not within" in decision.reason or "stayed within" in decision.reason
+
+
+def test_a_busy_second_restarts_the_calm_clock():
+    policy, decisions, high = steady_three(12)
+    assert not any(d.changed for d in decisions)
+    # One surge second resets the hysteresis; 12 more calm seconds are not enough.
+    high += 390
+    policy.step(Observation(12.0, (high // 3,) * 3, (200, 200, 200), 3, 3, 12.0, 3))
+    _, more, _ = steady_three(12, start=13, high=high, policy=policy)
+    assert not any(d.changed for d in more)
+
+
+def test_scale_up_stays_immediate_after_the_hysteresis_change():
+    policy = ReactivePolicy(CONFIG)
+    policy.step(observation(0, 0))
+    policy.step(observation(1, 52))
+    assert policy.step(observation(2, 52 + 390, lag=260)).replicas == 3
+
+
+def test_scale_down_margin_is_validated():
+    with pytest.raises(ValueError, match="margin"):
+        PlannerConfig(scale_down_margin=0)
+    with pytest.raises(ValueError, match="margin"):
+        PlannerConfig(scale_down_margin=1.5)

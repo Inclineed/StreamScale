@@ -23,7 +23,9 @@ autoscaler:
   capacity: 130.5
   targetDelaySeconds: 3
   readyDelaySeconds: 5
-  scaleDownHoldSeconds: 10
+  scaleDownHoldSeconds: 15
+  scaleDownMargin: 0.5
+  stableGroupSeconds: 5
   scaleDownIntervalSeconds: 20
   resources:
     requests: {cpu: 50m, memory: 64Mi}
