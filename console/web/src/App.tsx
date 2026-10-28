@@ -178,6 +178,8 @@ export default function App() {
         manual: "Manual scaling",
         "cpu-hpa": "CPU autoscaling",
         "lag-keda": "Lag autoscaling",
+        "ml-reactive": "ML-reactive autoscaling",
+        "ml-predictive": "ML-predictive autoscaling",
       } as Record<string, string>
     )[floor.manager.mode] ?? "Waiting for scaling state";
 

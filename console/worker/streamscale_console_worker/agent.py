@@ -159,7 +159,7 @@ def handler_factory(agent, token):
 
 def build(settings, kube=None, root=control.ROOT):
     agent = Agent(settings, kube or Kube(), root)
-    for name in ("sale", "scaling", "faults", "inspection", "reconcile"):
+    for name in ("sale", "scaling", "autoscale", "faults", "inspection", "reconcile"):
         # Later milestones add components; each is optional while it is absent.
         try:
             module = __import__(f"streamscale_console_worker.{name}", fromlist=["component"])

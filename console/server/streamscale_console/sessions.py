@@ -231,12 +231,11 @@ class Component:
         if self.task is not None and not self.task.done():
             raise Rejected("A comparison is already running")
         modes = params.get("modes") or ["fixed", "cpu-hpa", "lag-keda"]
-        if (
-            not isinstance(modes, list)
-            or not modes
-            or any(mode not in {"fixed", "manual", "cpu-hpa", "lag-keda"} for mode in modes)
-        ):
-            raise Rejected("Choose modes from fixed, cpu-hpa and lag-keda")
+        allowed = {"fixed", "manual", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive"}
+        if not isinstance(modes, list) or not modes or any(mode not in allowed for mode in modes):
+            raise Rejected(
+                "Choose modes from fixed, cpu-hpa, lag-keda, ml-reactive and ml-predictive"
+            )
 
     async def start_comparison(self, operation):
         identifier = (

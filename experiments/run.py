@@ -37,17 +37,47 @@ from manage import (  # noqa: E402
     kubectl,
     workflow,
 )  # noqa: E402
-from scaling import MODES, inspect, mode_snapshot  # noqa: E402
+from scaling import ML_MODES, V2_MODES, inspect, mode_snapshot  # noqa: E402
+from streamscale_workload.shapes import (  # noqa: E402
+    SHAPE_VERSION,
+    require_namespace,
+    sale_starts,
+)
+from streamscale_workload.shapes import schedule as shape_schedule  # noqa: E402
 
 from experiments.metrics import correct, epoch, quantity, summarize  # noqa: E402
 
-DESTINATION = ROOT / "artifacts/experiments"
+PROTOCOLS = {
+    "v2": ROOT / "experiments/protocol.json",
+    "v3": ROOT / "experiments/protocols/v3.json",
+}
+# v2 keeps its original location so M7 evidence and latest.path are never repointed.
+DESTINATIONS = {
+    "v2": ROOT / "artifacts/experiments",
+    "v3": ROOT / "artifacts/experiments/v3",
+}
+DESTINATION = DESTINATIONS["v2"]
 LATEST = DESTINATION / "latest.path"
+
+
+def load_protocol(name):
+    if name not in PROTOCOLS:
+        raise ValueError(f"Unknown protocol {name!r}")
+    return json.loads(PROTOCOLS[name].read_text())
+
+
+def protocol_modes(protocol):
+    return tuple(protocol.get("modes", V2_MODES))
+
+
+def scratch_destination(name):
+    return DESTINATIONS[name] / "scratch"
 
 
 def fingerprint():
     digest = hashlib.sha256(revision_snapshot()["source_sha256"].encode())
     paths = [ROOT / "experiments" / name for name in ("run.py", "metrics.py", "protocol.json")]
+    paths += sorted((ROOT / "experiments/protocols").glob("*.json"))
     paths += [
         path
         for path in (ROOT / "deploy/k8s").rglob("*")
@@ -68,10 +98,78 @@ def plan(protocol):
         }
         for repeat in range(1, protocol["repetitions"] + 1)
         for scenario in protocol["scenarios"]
-        for mode in MODES
+        for mode in protocol_modes(protocol)
     ]
     random.Random(protocol["order_seed"]).shuffle(cells)
     return cells
+
+
+def select(cells, modes=None, scenarios=None, repetitions=None):
+    """Subset of a plan for scratch campaigns; order is preserved."""
+    return [
+        cell
+        for cell in cells
+        if (not modes or cell["mode"] in modes)
+        and (not scenarios or cell["scenario"] in scenarios)
+        and (not repetitions or cell["repetition"] <= repetitions)
+    ]
+
+
+def shape_seed(protocol, scenario, repetition):
+    """Evaluation-namespace shape seed, shared by every mode of one (scenario, repetition)."""
+    seed = protocol["scenarios"][scenario]["seed"]
+    return require_namespace(
+        f"{protocol['shape_seed_namespace']}:{seed * 100 + repetition}",
+        protocol["shape_seed_namespace"],
+    )
+
+
+def model_identity():
+    from streamscale.autoscale.forecast import load as load_model
+
+    model = load_model()
+    trained = model.metadata.get("training_seeds", "")
+    if not str(trained).startswith("train:"):
+        raise RuntimeError("The packaged forecaster does not record training-only seeds")
+    return {
+        "sha256": model.sha256,
+        "quantile": model.quantile,
+        "training_seeds": trained,
+        "holdout_seeds": model.metadata.get("holdout_seeds"),
+        "tuning": model.metadata.get("tuning"),
+    }
+
+
+def freeze_v3(protocol, capacity, steady, surge):
+    frozen = json.loads(json.dumps(protocol))
+    frozen["pilot_capacity_per_second"] = capacity
+    frozen["rates"] = {"steady": steady, "surge": surge}
+    frozen["shape_version"] = SHAPE_VERSION
+    for name, scenario in frozen["scenarios"].items():
+        scenario["repetitions"] = {}
+        for repeat in range(1, protocol["repetitions"] + 1):
+            seed = shape_seed(protocol, name, repeat)
+            phases = shape_schedule(name, seed, steady, surge)
+            starts = sale_starts(phases, steady)
+            elapsed, sale_end = 0, None
+            for seconds, rate in phases:
+                elapsed += seconds
+                if rate > steady:
+                    sale_end = elapsed
+            scenario["repetitions"][str(repeat)] = {
+                "shape_seed": seed,
+                "event_seed": scenario["seed"] * 10 + repeat,
+                "schedule": phases,
+                "sale_starts": starts,
+                "load_transition_seconds": starts[0] if starts else 0,
+                "recovery_transition_seconds": sale_end
+                if scenario.get("recovery_after_sale")
+                else None,
+            }
+    frozen["autoscaler"] = dict(protocol["autoscaler"], capacity=capacity)
+    frozen["model"] = model_identity()
+    frozen["frozen_at"] = utc_now()
+    return frozen
 
 
 def freeze(protocol, capacity):
@@ -85,6 +183,8 @@ def freeze(protocol, capacity):
             int(capacity * protocol["surge_capacity_factor"]) // 2 * 2,
         ),
     )
+    if protocol["protocol_version"] >= 3:
+        return freeze_v3(protocol, capacity, steady, surge)
     frozen = json.loads(json.dumps(protocol))
     frozen["pilot_capacity_per_second"] = capacity
     frozen["rates"] = {"steady": steady, "surge": surge}
@@ -221,12 +321,12 @@ def scrape_history(run, samples, destination):
         write_json(destination / "handling-failures.json", {"samples": failed})
 
 
-def capture(metadata, cell, configuration, campaign):
+def deploy_arguments(cell, configuration):
     schedule = configuration["schedule"]
     count = sum(seconds * rate for seconds, rate in schedule)
     if count % 2:
         raise RuntimeError("The frozen schedule must contain an even number of logical events")
-    args = SimpleNamespace(
+    return SimpleNamespace(
         mode=cell["mode"],
         scenario=cell["scenario"],
         seed=cell["seed"],
@@ -236,7 +336,34 @@ def capture(metadata, cell, configuration, campaign):
         start_delay=8,
         schedule=schedule,
         configuration=configuration,
+        autoscaler=chart_autoscaler(configuration.get("autoscaler")),
     )
+
+
+def chart_autoscaler(settings):
+    """Frozen controller settings as Helm values (only rendered in ML modes)."""
+    if not settings:
+        return None
+    return {
+        "capacity": settings["capacity"],
+        "targetDelaySeconds": settings["target_delay_seconds"],
+        "readyDelaySeconds": settings["ready_delay_seconds"],
+        "scaleDownHoldSeconds": settings["scale_down_hold_seconds"],
+        "scaleDownIntervalSeconds": settings["scale_down_interval_seconds"],
+    }
+
+
+def autoscaler_decisions(destination):
+    """Retain the ML controller's decision log; it lives only in the controller's memory."""
+    with forward("autoscaler") as endpoint:
+        payload = json.loads(fetch(endpoint + "/decisions"))
+    write_json(destination / "autoscaler-decisions.json", payload)
+    return payload
+
+
+def capture(metadata, cell, configuration, campaign):
+    schedule = configuration["schedule"]
+    args = deploy_arguments(cell, configuration)
     info = deploy(metadata, args, wait=False)
     destination = campaign / info["run_name"]
     destination.mkdir()
@@ -349,6 +476,9 @@ def capture(metadata, cell, configuration, campaign):
             )
         else:
             raise RuntimeError("The run did not drain before its experiment deadline")
+    decisions = None
+    if cell["mode"] in ML_MODES and configuration["phase"] == "measured":
+        decisions = autoscaler_decisions(destination)
     before = inspect("/runs/" + info["run_name"])
     if before is None:
         raise RuntimeError("Pre-restart SQL/DLQ reconciliation failed")
@@ -380,6 +510,13 @@ def capture(metadata, cell, configuration, campaign):
         {"started_at": restarted_at, "ended_at": utc_now(), "inspection": after},
     )
     row = summarize(run, measurements, samples, before, after, configuration)
+    if decisions is not None:
+        controller = decisions["controller"]
+        row["autoscaler_policy"] = controller.get("policy")
+        row["autoscaler_model_sha256"] = controller.get("model_sha256", "")
+        row["autoscaler_decisions"] = sum(
+            item["run_id"] == run["run_id"] for item in decisions["decisions"]
+        )
     row["image_digest"] = metadata["image_id"]
     row["cell_key"] = cell["key"]
     row["artifact_directory"] = str(destination.relative_to(ROOT))
@@ -431,17 +568,22 @@ def verify_evidence(campaign, rows):
 def validate_matrix(state):
     measured = [row for row in state["rows"] if row["phase"] == "measured"]
     expected = {cell["key"] for cell in state["plan"]}
-    if len(measured) != 27 or {row["cell_key"] for row in measured} != expected:
-        raise RuntimeError("The complete 27-cell measured matrix is required")
+    if len(measured) != len(expected) or {row["cell_key"] for row in measured} != expected:
+        raise RuntimeError(f"The complete {len(expected)}-cell measured matrix is required")
     if any(not row["performance_eligible"] for row in measured):
         raise RuntimeError("A failed measured run cannot enter the performance comparison")
     if len({row["run_id"] for row in state["rows"]}) != len(state["rows"]):
         raise RuntimeError("Executions must have distinct run IDs")
     if {row["image_digest"] for row in state["rows"]} != {state["image"]["image_id"]}:
         raise RuntimeError("The consumer image changed during the campaign")
-    for scenario in state["protocol"]["scenarios"]:
-        if len({row["logical_sha256"] for row in measured if row["scenario"] == scenario}) != 1:
-            raise RuntimeError("Compared scenario workloads differ logically")
+    # v2 compares one logical sequence per scenario; v3 pairs modes within each repetition.
+    paired = state["protocol"]["protocol_version"] >= 3
+    groups = {}
+    for row in measured:
+        key = (row["scenario"], row.get("repetition")) if paired else row["scenario"]
+        groups.setdefault(key, set()).add(row["logical_sha256"])
+    if any(len(values) != 1 for values in groups.values()):
+        raise RuntimeError("Compared scenario workloads differ logically")
 
 
 def export_csv(campaign, state):
@@ -514,17 +656,7 @@ def recover_active(campaign, state):
     directory = Path(active["directory"])
     config = json.loads((directory / "configuration.json").read_text())
     cell = active["cell"]
-    args = SimpleNamespace(
-        mode=cell["mode"],
-        scenario=cell["scenario"],
-        seed=cell["seed"],
-        orders=sum(seconds * rate for seconds, rate in config["schedule"]) // 2,
-        profile=config["profile"],
-        paced=config["paced"],
-        start_delay=8,
-        schedule=config["schedule"],
-        configuration=config,
-    )
+    args = deploy_arguments(cell, config)
     print("Recovering the interrupted execution before any new publication", flush=True)
     deploy(state["image"], args, wait=False, run_name=active["deployment"]["run_name"])
     deadline = time.monotonic() + config["drain_timeout_seconds"] + 180
@@ -593,30 +725,81 @@ def restore_demo(metadata):
     verify_demo()
 
 
+def measured_cell(frozen, cell):
+    """Seeded cell and measured configuration for one plan entry."""
+    scenario = frozen["scenarios"][cell["scenario"]]
+    if frozen["protocol_version"] < 3:
+        cell = cell | {"seed": scenario["seed"]}
+        config = configuration(frozen, "measured", scenario["schedule"], cell["repetition"])
+        config["load_transition_seconds"] = 15 if cell["scenario"] == "flash-sale" else 0
+        if cell["scenario"] == "overload-recovery":
+            config["recovery_transition_seconds"] = 35
+        return cell, config
+    repetition = scenario["repetitions"][str(cell["repetition"])]
+    cell = cell | {"seed": repetition["event_seed"], "shape_seed": repetition["shape_seed"]}
+    config = configuration(frozen, "measured", repetition["schedule"], cell["repetition"])
+    config["shape_seed"] = repetition["shape_seed"]
+    config["sale_starts"] = repetition["sale_starts"]
+    config["load_transition_seconds"] = repetition["load_transition_seconds"]
+    if repetition["recovery_transition_seconds"] is not None:
+        config["recovery_transition_seconds"] = repetition["recovery_transition_seconds"]
+    config["autoscaler"] = frozen["autoscaler"]
+    config["model_sha256"] = frozen["model"]["sha256"]
+    return cell, config
+
+
+def warmup_configuration(frozen, cell):
+    config = configuration(
+        frozen,
+        "warmup",
+        [[frozen["warmup_seconds"], frozen["rates"]["steady"]]],
+        cell["repetition"],
+    )
+    if "autoscaler" in frozen:
+        config["autoscaler"] = frozen["autoscaler"]
+    return config
+
+
 def run_campaign(args):
-    protocol = json.loads((ROOT / "experiments/protocol.json").read_text())
+    name = getattr(args, "protocol", "v2")
+    protocol = load_protocol(name)
+    calibration = bool(getattr(args, "calibration", False))
+    scratch = bool(getattr(args, "modes", None) or getattr(args, "scenarios", None))
+    scratch = scratch or bool(getattr(args, "repetitions", None)) or calibration
+    destination = scratch_destination(name) if scratch else DESTINATIONS[name]
+    if calibration:
+        # Simulator calibration runs on training-namespace shapes, never evaluation ones.
+        protocol = protocol | {"shape_seed_namespace": "train"}
+        destination = DESTINATIONS[name] / "calibration"
+    latest = destination / "latest.path"
     current = fingerprint()
-    DESTINATION.mkdir(parents=True, exist_ok=True)
-    if args.resume and LATEST.exists():
-        campaign = Path(LATEST.read_text().strip())
+    destination.mkdir(parents=True, exist_ok=True)
+    if args.resume and latest.exists():
+        campaign = Path(latest.read_text().strip())
         state = json.loads((campaign / "campaign.json").read_text())
-        if state["fingerprint"] != current:
-            raise RuntimeError(
-                "Experiment code/configuration changed. Retain the old campaign and start: "
-                "./streamscale.sh experiments --fresh"
-            )
         verify_evidence(campaign, state["rows"])
         if state["status"] == "complete":
+            # Completed evidence is checksum-verified; later code changes cannot alter it.
             validate_matrix(state)
-            print(f"Verified retained 27-run matrix: {campaign}", flush=True)
+            print(f"Verified retained {len(state['plan'])}-run matrix: {campaign}", flush=True)
             return
+        if state["fingerprint"] != current:
+            raise RuntimeError(
+                "Experiment code/configuration changed since this campaign started. Retain it "
+                "and start a new one with --fresh"
+            )
         cluster()
         # Preserve the exact original image even when another demo has built a newer tag.
         call(["docker", "tag", state["image"]["image_id"], state["image"]["image"]])
     else:
+        cells = plan(protocol)
+        if scratch:
+            cells = select(cells, args.modes, args.scenarios, args.repetitions)
+            if not cells:
+                raise RuntimeError("The scratch selection contains no cells")
         metadata = build()
         cluster()
-        campaign = DESTINATION / (
+        campaign = destination / (
             "campaign-" + utc_now()[:19].replace(":", "").replace("-", "") + "-" + uuid4().hex[:6]
         )
         campaign.mkdir()
@@ -625,13 +808,17 @@ def run_campaign(args):
             "status": "running",
             "fingerprint": current,
             "protocol": protocol,
-            "plan": plan(protocol),
+            "protocol_name": name,
+            # Scratch campaigns are subsets for checking; analysis refuses to report them.
+            "scratch": scratch,
+            "purpose": "calibration" if calibration else ("scratch" if scratch else "evidence"),
+            "plan": cells,
             "image": metadata,
             "rows": [],
             "failures": [],
         }
         write_json(campaign / "campaign.json", state)
-        LATEST.write_text(str(campaign) + "\n")
+        latest.write_text(str(campaign) + "\n")
     call([TOOLS / "kind", "load", "docker-image", state["image"]["image"], "--name", CLUSTER])
     install_addons()
     if not (campaign / "environment.json").exists():
@@ -666,46 +853,61 @@ def run_campaign(args):
         frozen = freeze(protocol, pilot["throughput_processing_per_second"])
         frozen["pilot_run_id"] = pilot["run_id"]
         write_json(frozen_path, frozen)
+    total = len(state["plan"])
     print(
         f"Frozen protocol {frozen['protocol_version']}: rates={frozen['rates']}; "
-        "27 measured executions",
+        f"{total} measured executions",
         flush=True,
     )
     completed = {row["cell_key"] for row in state["rows"] if row["performance_eligible"]}
     for cell in state["plan"]:
         if cell["key"] in completed:
             continue
-        scenario = frozen["scenarios"][cell["scenario"]]
-        cell = cell | {"seed": scenario["seed"]}
+        cell, config = measured_cell(frozen, cell)
         warmup = record_capture(
             campaign,
             state,
             cell | {"key": cell["key"] + "-warmup"},
-            configuration(
-                frozen,
-                "warmup",
-                [[frozen["warmup_seconds"], frozen["rates"]["steady"]]],
-                cell["repetition"],
-            ),
+            warmup_configuration(frozen, cell),
         )
-        config = configuration(frozen, "measured", scenario["schedule"], cell["repetition"])
         config["warmup_run_id"] = warmup["run_id"]
         config["warmup_seconds"] = frozen["warmup_seconds"]
-        config["load_transition_seconds"] = 15 if cell["scenario"] == "flash-sale" else 0
-        if cell["scenario"] == "overload-recovery":
-            config["recovery_transition_seconds"] = 35
         record_capture(campaign, state, cell, config)
         count = sum(
             row["phase"] == "measured" and row["performance_eligible"] for row in state["rows"]
         )
-        print(f"Matrix progress: {count}/27 correct measured runs", flush=True)
+        print(f"Matrix progress: {count}/{total} correct measured runs", flush=True)
     validate_matrix(state)
     verify_evidence(campaign, state["rows"])
     state["status"] = "complete"
     state["ended_at"] = utc_now()
     export_csv(campaign, state)
     restore_demo(state["image"])
-    print(f"M7 complete: {campaign / 'summary.csv'}", flush=True)
+    label = "M16" if protocol["protocol_version"] >= 3 else "M7"
+    print(
+        f"{label} {'scratch ' if scratch else ''}complete: {campaign / 'summary.csv'}", flush=True
+    )
+
+
+def dry_run(name, capacity=None):
+    """Print the plan and frozen schedules for an assumed pilot capacity; no cluster use."""
+    protocol = load_protocol(name)
+    if capacity is None:
+        capacity = json.loads((ROOT / "docs/results/current/frozen-protocol.json").read_text())[
+            "pilot_capacity_per_second"
+        ]
+    frozen = freeze(protocol, capacity)
+    cells = plan(protocol)
+    print(json.dumps({"protocol": name, "cells": len(cells), "rates": frozen["rates"]}))
+    for cell in cells:
+        seeded, config = measured_cell(frozen, cell)
+        seconds = sum(phase[0] for phase in config["schedule"])
+        print(
+            f"{seeded['key']:32} seed={seeded['seed']:<6} "
+            f"shape={seeded.get('shape_seed', '-'):10} {seconds:4d}s "
+            f"sales@{config.get('sale_starts', '-')}"
+        )
+    return frozen
 
 
 def main():
@@ -717,8 +919,30 @@ def main():
     group.add_argument(
         "--fresh", action="store_true", help="Create a new campaign, retaining prior evidence"
     )
+    parser.add_argument("--protocol", choices=sorted(PROTOCOLS), default="v2")
+    parser.add_argument("--dry-run", action="store_true", help="Print the plan; no cluster use")
+    parser.add_argument("--capacity", type=float, help="Assumed pilot capacity for --dry-run")
+    scratch = parser.add_argument_group("scratch subset (never reported)")
+    scratch.add_argument("--modes", type=lambda value: set(value.split(",")))
+    scratch.add_argument("--scenarios", type=lambda value: set(value.split(",")))
+    scratch.add_argument("--repetitions", type=int)
+    scratch.add_argument(
+        "--calibration",
+        action="store_true",
+        help="Simulator calibration subset on train: shape seeds (protocol v3 only)",
+    )
     args = parser.parse_args()
+    if args.calibration and args.protocol != "v3":
+        parser.error("--calibration needs --protocol v3")
     args.resume = not args.fresh
+    if args.dry_run:
+        dry_run(args.protocol, args.capacity)
+        return
+    protocol = load_protocol(args.protocol)
+    unknown = (args.modes or set()) - set(protocol_modes(protocol))
+    unknown |= (args.scenarios or set()) - set(protocol["scenarios"])
+    if unknown:
+        parser.error(f"Not in protocol {args.protocol}: {', '.join(sorted(unknown))}")
     with workflow():
         run_campaign(args)
 

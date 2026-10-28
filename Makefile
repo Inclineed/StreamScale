@@ -83,6 +83,22 @@ experiment-audit:
 analysis:
 	uv run --project experiments/analysis --frozen python -m experiments.analyze
 
+# M16 protocol v3: five modes × five scenarios × three repetitions, beside M7's results.
+.PHONY: experiments-v3 experiments-v3-fresh experiment-audit-v3 analysis-v3
+experiments-v3: .tools/bin/kind .tools/bin/kubectl .tools/bin/helm
+	uv run --frozen python -m experiments.run --protocol v3 --resume
+	uv run --frozen python -m experiments.evidence --protocol v3
+
+experiments-v3-fresh: .tools/bin/kind .tools/bin/kubectl .tools/bin/helm
+	uv run --frozen python -m experiments.run --protocol v3 --fresh
+	uv run --frozen python -m experiments.evidence --protocol v3
+
+experiment-audit-v3:
+	uv run --frozen python -m experiments.evidence --protocol v3
+
+analysis-v3:
+	uv run --project experiments/analysis --frozen python -m experiments.analyze --protocol v3
+
 # Interactive console (M9+): separately locked Python and Node dependencies.
 CONSOLE = uv run --project console --frozen
 CONSOLE_ARGS ?=
@@ -111,3 +127,33 @@ console-check: console-install .tools/bin/kind .tools/bin/kubectl .tools/bin/hel
 
 console-serve:
 	$(CONSOLE) python -m streamscale_console serve $(CONSOLE_ARGS)
+
+# ML predictive autoscaling (M16): separately locked offline tooling. The cluster image only
+# carries the plain-Python controller and the exported forecaster JSON.
+ML = uv run --project ml --frozen
+REPLAY ?= flash-sale
+.PHONY: ml-install ml-test ml-fit ml-sim ml-train ml-eval ml-calibrate autoscale-replay
+ml-install:
+	uv sync --project ml --frozen
+ml-test: ml-install
+	$(ML) pytest ml/tests
+ml-fit: ml-install
+	$(ML) python -m streamscale_ml.calibrate
+ml-sim: ml-install
+	$(ML) python -m streamscale_ml.compare
+ml-train: ml-install
+	$(ML) python -m streamscale_ml.tune
+ml-eval: ml-install
+	$(ML) python -m streamscale_ml.evaluate
+
+# Short cluster runs on train: shapes refine the simulator before retraining.
+CALIBRATION_CAMPAIGN = artifacts/experiments/v3/calibration/latest.path
+ml-calibrate: ml-install .tools/bin/kind .tools/bin/kubectl .tools/bin/helm
+	uv run --frozen python -m experiments.run --protocol v3 --fresh --calibration \
+		--modes fixed,lag-keda,ml-reactive --scenarios flash-sale,ramp,repeated-sales \
+		--repetitions 1
+	$(ML) python -m streamscale_ml.calibrate --campaign "$$(cat $(CALIBRATION_CAMPAIGN))"
+	$(ML) python -m streamscale_ml.tune
+	$(ML) python -m streamscale_ml.evaluate
+autoscale-replay:
+	uv run --frozen streamscale autoscale-replay --synthetic "$(REPLAY)"

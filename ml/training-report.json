@@ -1,0 +1,230 @@
+{
+  "model": "src/streamscale/autoscale/models/forecaster-v1.json",
+  "sha256": "c0a4796b9cadc1e4639fdfae498995f035044aab1a568934c147053fd7c2a1c6",
+  "quantile": 0.9,
+  "rows": 118105,
+  "holdout_rows": 23580,
+  "seconds": 87.3,
+  "holdout_quality": {
+    "0-4s": {
+      "all": {
+        "pinball": 0.0582,
+        "persistence_pinball": 0.0926,
+        "coverage": 0.9041,
+        "persistence_coverage": 0.4257
+      },
+      "flash-sale": {
+        "pinball": 0.0916,
+        "persistence_pinball": 0.0873,
+        "coverage": 0.9027,
+        "persistence_coverage": 0.4589
+      },
+      "overload-recovery": {
+        "pinball": 0.0744,
+        "persistence_pinball": 0.0704,
+        "coverage": 0.9094,
+        "persistence_coverage": 0.5877
+      },
+      "ramp": {
+        "pinball": 0.0267,
+        "persistence_pinball": 0.0761,
+        "coverage": 0.8841,
+        "persistence_coverage": 0.2949
+      },
+      "repeated-sales": {
+        "pinball": 0.0759,
+        "persistence_pinball": 0.1336,
+        "coverage": 0.8963,
+        "persistence_coverage": 0.4216
+      },
+      "steady": {
+        "pinball": 0.0038,
+        "persistence_pinball": 0.0019,
+        "coverage": 0.9735,
+        "persistence_coverage": 0.4986
+      }
+    },
+    "5-9s": {
+      "all": {
+        "pinball": 0.1121,
+        "persistence_pinball": 0.1922,
+        "coverage": 0.8977,
+        "persistence_coverage": 0.4621
+      },
+      "flash-sale": {
+        "pinball": 0.1629,
+        "persistence_pinball": 0.1822,
+        "coverage": 0.8757,
+        "persistence_coverage": 0.4773
+      },
+      "overload-recovery": {
+        "pinball": 0.1322,
+        "persistence_pinball": 0.1473,
+        "coverage": 0.8785,
+        "persistence_coverage": 0.61
+      },
+      "ramp": {
+        "pinball": 0.0758,
+        "persistence_pinball": 0.1584,
+        "coverage": 0.9248,
+        "persistence_coverage": 0.3682
+      },
+      "repeated-sales": {
+        "pinball": 0.1175,
+        "persistence_pinball": 0.2765,
+        "coverage": 0.8766,
+        "persistence_coverage": 0.4478
+      },
+      "steady": {
+        "pinball": 0.0927,
+        "persistence_pinball": 0.0041,
+        "coverage": 0.9664,
+        "persistence_coverage": 0.5295
+      }
+    },
+    "10-14s": {
+      "all": {
+        "pinball": 0.1416,
+        "persistence_pinball": 0.2893,
+        "coverage": 0.9016,
+        "persistence_coverage": 0.5282
+      },
+      "flash-sale": {
+        "pinball": 0.1784,
+        "persistence_pinball": 0.2755,
+        "coverage": 0.8791,
+        "persistence_coverage": 0.5276
+      },
+      "overload-recovery": {
+        "pinball": 0.1337,
+        "persistence_pinball": 0.2229,
+        "coverage": 0.8418,
+        "persistence_coverage": 0.649
+      },
+      "ramp": {
+        "pinball": 0.1367,
+        "persistence_pinball": 0.239,
+        "coverage": 0.9405,
+        "persistence_coverage": 0.4432
+      },
+      "repeated-sales": {
+        "pinball": 0.1277,
+        "persistence_pinball": 0.4153,
+        "coverage": 0.8859,
+        "persistence_coverage": 0.5287
+      },
+      "steady": {
+        "pinball": 0.177,
+        "persistence_pinball": 0.0056,
+        "coverage": 0.9727,
+        "persistence_coverage": 0.5679
+      }
+    },
+    "15-19s": {
+      "all": {
+        "pinball": 0.1506,
+        "persistence_pinball": 0.3692,
+        "coverage": 0.9049,
+        "persistence_coverage": 0.5562
+      },
+      "flash-sale": {
+        "pinball": 0.1799,
+        "persistence_pinball": 0.3652,
+        "coverage": 0.8412,
+        "persistence_coverage": 0.5603
+      },
+      "overload-recovery": {
+        "pinball": 0.152,
+        "persistence_pinball": 0.2954,
+        "coverage": 0.8063,
+        "persistence_coverage": 0.6582
+      },
+      "ramp": {
+        "pinball": 0.1437,
+        "persistence_pinball": 0.307,
+        "coverage": 0.9456,
+        "persistence_coverage": 0.4852
+      },
+      "repeated-sales": {
+        "pinball": 0.1333,
+        "persistence_pinball": 0.5219,
+        "coverage": 0.9057,
+        "persistence_coverage": 0.5557
+      },
+      "steady": {
+        "pinball": 0.1999,
+        "persistence_pinball": 0.0072,
+        "coverage": 0.9984,
+        "persistence_coverage": 0.5869
+      }
+    }
+  },
+  "tuning": {
+    "objective": "max share of runs with p95 <= target, then min median replica-seconds",
+    "tie_tolerance": 0.02,
+    "tuning_seeds": "train:200000..train:200019",
+    "candidates": [
+      {
+        "quantile": 0.5,
+        "target_met": 0.5,
+        "median_replica_seconds": 134.0,
+        "per_shape_target_met": {
+          "steady": 1.0,
+          "flash-sale": 0.0,
+          "overload-recovery": 0.0,
+          "ramp": 1.0,
+          "repeated-sales": 0.5
+        }
+      },
+      {
+        "quantile": 0.6,
+        "target_met": 0.5,
+        "median_replica_seconds": 134.0,
+        "per_shape_target_met": {
+          "steady": 1.0,
+          "flash-sale": 0.0,
+          "overload-recovery": 0.0,
+          "ramp": 1.0,
+          "repeated-sales": 0.5
+        }
+      },
+      {
+        "quantile": 0.7,
+        "target_met": 0.5,
+        "median_replica_seconds": 135.5,
+        "per_shape_target_met": {
+          "steady": 1.0,
+          "flash-sale": 0.0,
+          "overload-recovery": 0.0,
+          "ramp": 1.0,
+          "repeated-sales": 0.5
+        }
+      },
+      {
+        "quantile": 0.8,
+        "target_met": 0.52,
+        "median_replica_seconds": 134.0,
+        "per_shape_target_met": {
+          "steady": 1.0,
+          "flash-sale": 0.0,
+          "overload-recovery": 0.0,
+          "ramp": 1.0,
+          "repeated-sales": 0.6
+        }
+      },
+      {
+        "quantile": 0.9,
+        "target_met": 0.55,
+        "median_replica_seconds": 138.0,
+        "per_shape_target_met": {
+          "steady": 1.0,
+          "flash-sale": 0.0,
+          "overload-recovery": 0.0,
+          "ramp": 1.0,
+          "repeated-sales": 0.75
+        }
+      }
+    ],
+    "chosen_quantile": 0.9
+  }
+}

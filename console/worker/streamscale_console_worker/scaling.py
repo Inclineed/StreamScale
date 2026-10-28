@@ -1,7 +1,9 @@
 """Scaling modes for console consumers, with single-controller ownership.
 
-Modes: fixed (1 replica), manual (0–3), cpu-hpa (CPU HorizontalPodAutoscaler, 1–3)
-and lag-keda (KEDA Kafka lag ScaledObject, 1–3). A manual override suspends the
+Modes: fixed (1 replica), manual (0–3), cpu-hpa (CPU HorizontalPodAutoscaler, 1–3),
+lag-keda (KEDA Kafka lag ScaledObject, 1–3), and ml-reactive / ml-predictive (the
+agent's autoscale component sets replicas, 1–3, with no cluster object). A manual
+override suspends the
 active autoscaler by removing it before writing replicas; releasing the override
 recreates the selected controller. HPA and KEDA never target the Deployment at
 the same time: every transition removes unwanted controllers, waits until they
@@ -26,8 +28,14 @@ from streamscale_console_worker.kube import (
     KubeError,
 )
 
-MODES = ("fixed", "manual", "cpu-hpa", "lag-keda")
+MODES = ("fixed", "manual", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive")
+# Kubernetes-object autoscalers; their controllers are created and verified here.
 AUTOSCALED = ("cpu-hpa", "lag-keda")
+# The agent's own autoscale component owns replicas in these modes (no cluster object).
+AGENT_OWNED = ("ml-reactive", "ml-predictive")
+# Every mode where replicas are controller-owned and a manual override applies.
+CONTROLLED = AUTOSCALED + AGENT_OWNED
+MODE_TEXT = "fixed, manual, cpu-hpa, lag-keda, ml-reactive or ml-predictive"
 DEFAULT_SETTINGS = {
     "min": 1,
     "max": 3,
@@ -271,7 +279,7 @@ class Scaling:
     def set_mode(self, body):
         mode = body.get("mode")
         if mode not in MODES:
-            raise ScalingError("Mode must be fixed, manual, cpu-hpa or lag-keda")
+            raise ScalingError(f"Mode must be {MODE_TEXT}")
         changes = {"mode": mode, "override": None}
         if mode == "manual":
             replicas = body.get("replicas", self.state.get("manual_replicas", 1))
@@ -294,7 +302,7 @@ class Scaling:
         return self.start({"manual_replicas": replicas}, f"Set {replicas} manual replicas")
 
     def enter_override(self, body):
-        if self.state["mode"] not in AUTOSCALED:
+        if self.state["mode"] not in CONTROLLED:
             raise ScalingError("Override suspends an autoscaler; use manual mode directly")
         replicas = self._replicas(body.get("replicas", 3))
         override = {"replicas": replicas, "since": time.time(), "base": self.state["mode"]}

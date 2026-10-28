@@ -111,13 +111,18 @@ class WorkloadTotals:
 
 
 class MetricsServer:
-    def __init__(self, collection, port, host="0.0.0.0"):
+    def __init__(self, collection, port, host="0.0.0.0", routes=None):
+        """``routes`` maps extra GET paths to callables returning (bytes, content type)."""
         self.ready = Event()
         ready = self.ready
+        extra = dict(routes or {})
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                if self.path == "/metrics":
+                if self.path in extra:
+                    payload, content = extra[self.path]()
+                    status = 200
+                elif self.path == "/metrics":
                     payload, status, content = generate_latest(collection), 200, CONTENT_TYPE_LATEST
                 elif self.path == "/health/live":
                     payload, status, content = b"live\n", 200, "text/plain"

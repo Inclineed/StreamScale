@@ -41,3 +41,25 @@ def test_missing_scaling_response_is_not_a_zero_second_response():
 def test_incomplete_repetitions_cannot_be_ranked():
     with pytest.raises(RuntimeError, match="three distinct"):
         aggregate(rows()[1:])
+
+
+def test_v3_aggregation_covers_every_mode_scenario_and_new_metric():
+    from experiments.analyze import V3_METRICS
+
+    modes = ("fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive")
+    scenarios = ("steady", "ramp", "repeated-sales")
+    source = [
+        {
+            "mode": mode,
+            "scenario": scenario,
+            "repetition": repeat,
+            **{metric: repeat for metric in (*METRICS, *V3_METRICS)},
+        }
+        for mode in modes
+        for scenario in scenarios
+        for repeat in range(1, 4)
+    ]
+    result = aggregate(source, modes, scenarios, (*METRICS, *V3_METRICS))
+    assert len(result) == len(modes) * len(scenarios) * (len(METRICS) + len(V3_METRICS))
+    single = [row for row in source if row["repetition"] == 1]
+    assert aggregate(single, modes, scenarios, METRICS, repetitions=1)[0]["observed"] == 1

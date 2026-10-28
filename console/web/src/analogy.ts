@@ -69,7 +69,8 @@ export const TERMS = {
   controller: {
     store: "Floor manager",
     system: "Scaling controller",
-    explain: "Decides how many cashiers are on duty: fixed, manual, CPU-HPA or lag-KEDA.",
+    explain:
+      "Decides how many cashiers are on duty: fixed, manual, CPU-HPA, lag-KEDA, ML-reactive or ML-predictive.",
   },
   cpuHpa: {
     store: "“Cashiers look busy” rule",
@@ -142,7 +143,21 @@ export const MODE_LABELS: Record<string, Term> = {
     system: "Lag-KEDA · 1–3 replicas",
     explain: "KEDA adds or removes replicas from Kafka consumer-group lag.",
   },
+  "ml-reactive": {
+    store: "Manager watching the door",
+    system: "ML-reactive · 1–3 replicas",
+    explain:
+      "Every second, simulates the queues for 1, 2 and 3 cashiers at today's arrival rate and picks the fewest that keep waits under 3 s.",
+  },
+  "ml-predictive": {
+    store: "Manager who expects the rush",
+    system: "ML-predictive · 1–3 replicas",
+    explain:
+      "Same one-second planner, but plans with a learned forecast of the next 20 s of arrivals and learns cashier speed and start-up time as it goes.",
+  },
 };
+
+export const ML_MODES = ["ml-reactive", "ml-predictive"] as const;
 
 export function label(id: TermId, lens: Lens) {
   return TERMS[id][lens];

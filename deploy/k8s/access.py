@@ -26,7 +26,13 @@ def forward(role, port=None, resource=None):
             probe.bind(("127.0.0.1", port))
         except OSError:
             raise RuntimeError(f"Loopback port {port} is already in use") from None
-    remote = {"prometheus": 9090, "grafana": 3000, "consumer": 9100, "exporter": 9100}[role]
+    remote = {
+        "prometheus": 9090,
+        "grafana": 3000,
+        "consumer": 9100,
+        "exporter": 9100,
+        "autoscaler": 9100,
+    }[role]
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with (OUTPUT / f"forward-{role}-{port}.log").open("w") as log:
         process = subprocess.Popen(

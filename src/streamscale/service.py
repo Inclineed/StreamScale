@@ -75,15 +75,27 @@ def serve_consumer(settings, directory, port, stop):
 
 
 def kafka_snapshot(consumer, admin, run):
+    lag, _highs, replicas = kafka_sample(consumer, admin, run)
+    return lag, replicas
+
+
+def kafka_sample(consumer, admin, run):
+    """Per-partition lag, broker high watermarks and live group members.
+
+    High watermarks let a scaling policy measure arrivals from Kafka itself instead of the
+    run's planned schedule.
+    """
     parts = [TopicPartition(INPUT_TOPIC, part) for part in range(3)]
     committed = consumer.committed(parts, timeout=10)
     lag = {}
+    highs = {}
     for part in committed:
         low, high = consumer.get_watermark_offsets(part, timeout=10, cached=False)
         position = (
             part.offset if part.offset >= 0 else max(low, run["start_offsets"][str(part.partition)])
         )
         lag[part.partition] = max(0, high - position)
+        highs[part.partition] = high
     group = admin.describe_consumer_groups([run["group_id"]], request_timeout=10)
     try:
         replicas = len(group[run["group_id"]].result(timeout=15).members)
@@ -92,7 +104,7 @@ def kafka_snapshot(consumer, admin, run):
         if error.args[0].code() != KafkaError.GROUP_ID_NOT_FOUND:
             raise
         replicas = 0
-    return lag, replicas
+    return lag, highs, replicas
 
 
 def serve_exporter(settings, directory, port, stop):
@@ -108,6 +120,12 @@ def serve_exporter(settings, directory, port, stop):
         lag = Gauge(
             "streamscale_kafka_lag",
             "Broker high offset minus group committed offset",
+            (*LABELS, "partition"),
+            registry=collection,
+        )
+        high_watermark = Gauge(
+            "streamscale_kafka_high_watermark",
+            "Broker high watermark (next offset to be written) of the input topic",
             (*LABELS, "partition"),
             registry=collection,
         )
@@ -141,9 +159,11 @@ def serve_exporter(settings, directory, port, stop):
                     if current["run_id"] != run["run_id"]:
                         raise RuntimeError("Active metrics run identity changed")
                     run.update(current)
-                positions, members = kafka_snapshot(probe, admin, run)
+                positions, highs, members = kafka_sample(probe, admin, run)
                 for part, pending in positions.items():
                     lag.labels(*values, str(part)).set(pending)
+                for part, high in highs.items():
+                    high_watermark.labels(*values, str(part)).set(high)
                 replicas.set(members)
                 success.set(time.time())
                 server.ready.set()

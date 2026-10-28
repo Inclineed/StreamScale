@@ -10,11 +10,15 @@ from uuid import UUID
 from streamscale.contract import timestamp
 from streamscale.ids import MAX_SEED, event_id, new_run_id, order_id
 from streamscale.run_artifacts import manifest_hash, utc_now, write_json
+from streamscale_workload.shapes import schedule as _shape
 
 SCENARIOS = {
     "steady": [(120, 100)],
     "flash-sale": [(30, 100), (15, 1500), (75, 100)],
     "overload-recovery": [(60, 1500), (60, 100)],
+    # Protocol v3 shapes (see shapes.py); measured runs always pass an explicit schedule.
+    "ramp": [tuple(phase) for phase in _shape("ramp", "eval:0", 52, 390)],
+    "repeated-sales": [tuple(phase) for phase in _shape("repeated-sales", "eval:0", 52, 390)],
 }
 INVALID_FAULTS = ("invalid_json", "invalid_encoding", "invalid_amount", "invalid_key")
 
@@ -133,7 +137,7 @@ def generate(
     schedule=None,
     configuration=None,
 ) -> dict:
-    if mode not in {"fixed", "cpu-hpa", "lag-keda"}:
+    if mode not in {"fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive"}:
         raise ValueError("Unsupported experiment mode")
     if group_id is not None and (not group_id.strip() or len(group_id) > 255):
         raise ValueError("Consumer group must be nonempty and at most 255 characters")

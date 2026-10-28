@@ -46,8 +46,8 @@ MAX_RATE = 2000
 MAX_EVENTS = 400_000
 MAX_SECONDS = 3600
 LATE_DELAY_US = 10_000_000
-SCENARIOS = ("steady", "flash-sale", "overload-recovery")
-MODES = ("fixed", "manual", "cpu-hpa", "lag-keda")
+SCENARIOS = ("steady", "flash-sale", "overload-recovery", "ramp", "repeated-sales")
+MODES = ("fixed", "manual", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive")
 FAULT_KEYS = ("malformed_pct", "duplicate_pct", "late_pct")
 ACTIVE = {"preparing", "publishing", "paused", "stopping"}
 
@@ -61,7 +61,7 @@ def validate_config(config):
         raise SaleError("Sale configuration must be an object")
     scenario = config.get("scenario")
     if scenario not in SCENARIOS:
-        raise SaleError("Scenario must be steady, flash-sale or overload-recovery")
+        raise SaleError("Scenario must be one of " + ", ".join(SCENARIOS))
     seed = config.get("seed")
     if type(seed) is not int or not 0 <= seed <= MAX_SEED:
         raise SaleError("Seed must be an integer from 0 to 2^63-1")
@@ -97,7 +97,7 @@ def validate_config(config):
         mix[key] = round(float(value), 2)
     mode = config.get("mode", "fixed")
     if mode not in MODES:
-        raise SaleError("Mode must be fixed, manual, cpu-hpa or lag-keda")
+        raise SaleError("Mode must be one of " + ", ".join(MODES))
     preset = str(config.get("preset", "custom"))[:40]
     session = str(config.get("session", ""))[:80]
     return {
@@ -156,7 +156,10 @@ def run_name_for(now=None):
 
 
 def mode_label(mode):
-    """experiment_run.mode only admits measured modes; manual sales are recorded as fixed."""
+    """experiment_run.mode only admits measured modes; manual sales are recorded as fixed.
+
+    Migration 0002 added ml-reactive and ml-predictive, so they keep their own label.
+    """
     return "fixed" if mode == "manual" else mode
 
 

@@ -1,4 +1,4 @@
-# Run and stop StreamScale through M15
+# Run and stop StreamScale through M16
 
 Start Docker Engine/Desktop first. You need Bash, uv, make, and Node.js 20.19+
 with npm installed. The console's browser checks use the installed Google Chrome.
@@ -12,10 +12,13 @@ From the repository root, run everything with:
 ```
 
 This performs setup, local smoke and fixture demonstration, unit/lint/integration
-checks (including M4 faults), cluster image build/deployment, SQL/metrics/Grafana
-verification, three scaling-mode exercises, the measured experiment matrix,
-plots/report/presentation generation, the interactive console's unit, live-cluster
-and browser acceptance, and finally the console with Grafana/Prometheus links.
+checks (including M4 faults), the ML forecaster tests and simulated offline
+evaluation, cluster image build/deployment, SQL/metrics/Grafana verification,
+five scaling-mode exercises, the M16 measured matrix (75 runs, about 3.5 hours on
+first run), its plots/report/presentation, the interactive console's unit,
+live-cluster and browser acceptance, and finally the console with
+Grafana/Prometheus links. M7's 27-run campaign and its committed report are not
+rerun or rewritten by `all`; use `experiments`/`analysis` for them.
 The last step stays in the terminal until Ctrl+C. First-time image/tool downloads can take several minutes. For a
 complete check without starting dashboard forwards:
 
@@ -171,6 +174,33 @@ CSV files, SVG/PNG charts and presentation PDF appear in `docs/results/current/`
 The plotting environment has its own locked dependencies and does not alter
 the consumer image. See [reproduction](reproduction.md) and
 [presentation steps](presentation.md).
+
+## ML predictive autoscaling (M16)
+
+```sh
+./streamscale.sh ml                    # forecaster tests + offline simulated evaluation
+./streamscale.sh ml-train              # refit simulator to M7, retune, retrain the model
+./streamscale.sh scaling               # all five modes live, with controller decisions
+./streamscale.sh experiments-v3        # 75-run campaign; --fresh starts a new one
+./streamscale.sh analysis-v3           # audited report in docs/results/m16/
+```
+
+The offline tools use the separately locked `ml/` project (numpy, scikit-learn);
+the cluster image only carries the plain-Python controller and the exported
+forecaster JSON. `make ml-sim` prints a simulated comparison on training seeds,
+and `make autoscale-replay REPLAY=flash-sale` shows the planner's decisions over a
+synthetic trace. Raw v3 evidence lives under `artifacts/experiments/v3/`; a
+scratch subset for checking the pipeline end to end runs with, for example:
+
+```sh
+uv run --frozen python -m experiments.run --protocol v3 --fresh \
+    --modes lag-keda,ml-predictive --scenarios ramp,repeated-sales --repetitions 1
+uv run --project experiments/analysis --frozen python -m experiments.analyze \
+    --protocol v3 --scratch     # writes artifacts/experiments/scratch-report/
+```
+
+`uv run --frozen python -m experiments.run --protocol v3 --dry-run` prints the
+frozen plan without touching the cluster. See [the design](ml-autoscaling.md).
 
 `make k8s-up` installs kind/kubectl/Helm automatically when missing. Standalone
 `./streamscale.sh cluster` also starts retained kind nodes before deployment,

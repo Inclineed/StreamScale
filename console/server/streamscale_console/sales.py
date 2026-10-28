@@ -77,12 +77,67 @@ def presets(protocol_path=PROTOCOL):
             "schedule": scenarios["overload-recovery"]["schedule"],
             "description": "Starts overloaded, then drops to steady traffic to show recovery.",
         },
+        *forecastable(steady, surge),
     ]
     for row in rows:
         row["faults"] = dict(DEFAULT_FAULTS)
         row["events"] = sum(seconds * rate for seconds, rate in row["schedule"])
         row["seconds"] = sum(seconds for seconds, _ in row["schedule"])
     return {"presets": rows, "rates": rates, "pilot_capacity_per_second": capacity}
+
+
+MAX_PHASES = 12
+
+
+def coarsen(phases, limit=MAX_PHASES):
+    """Merge the closest-rate neighbours until a schedule fits the console's phase limit.
+
+    The ramp's one-second climb becomes a few longer steps; rates stay even integers.
+    """
+    phases = [list(phase) for phase in phases]
+    while len(phases) > limit:
+        index = min(range(len(phases) - 1), key=lambda i: abs(phases[i][1] - phases[i + 1][1]))
+        (first, a), (second, b) = phases[index], phases[index + 1]
+        rate = max(2, round((first * a + second * b) / (first + second) / 2) * 2)
+        phases[index : index + 2] = [[first + second, rate]]
+    return phases
+
+
+def forecastable(steady, surge):
+    """M16 shapes where forecasting can help: a gradual ramp and repeated sales.
+
+    They follow the measured v3 repetition-1 shapes (the ramp coarsened to at most 12
+    phases), so a console demo resembles the campaign.
+    """
+    from streamscale_workload.shapes import sale_starts, schedule
+
+    rows = []
+    for identifier, label, seed, text in (
+        (
+            "ramp",
+            "Gradual ramp",
+            404,
+            "Traffic climbs over about 20 s to near the rush rate; a trend forecast helps.",
+        ),
+        (
+            "repeated-sales",
+            "Repeated sales",
+            505,
+            "Several seeded rushes about half a minute apart; a forecaster learns the rhythm.",
+        ),
+    ):
+        phases = coarsen(schedule(identifier, f"eval:{seed * 100 + 1}", steady, surge))
+        rows.append(
+            {
+                "id": identifier,
+                "label": label,
+                "scenario": identifier,
+                "seed": seed * 10 + 1,
+                "schedule": phases,
+                "description": f"{text} {len(sale_starts(phases, steady))} sale(s).",
+            }
+        )
+    return rows
 
 
 def now_text():
@@ -711,6 +766,10 @@ def replay_sample(sample):
         "scaling": {
             key: (sample.get("scaling") or {}).get(key)
             for key in ("mode", "override", "ownership", "transition")
+        },
+        # The ML controller's latest decision, so replays can explain each scaling step.
+        "autoscaler": {
+            key: (sample.get("autoscaler") or {}).get(key) for key in ("status", "last", "policy")
         },
         "faults": {"active": ((sample.get("faults") or {}).get("active") or [])},
     }

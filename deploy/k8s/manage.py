@@ -210,7 +210,9 @@ def credentials():
 
 
 def clear_scaling():
-    # Finish/drain the previous run before switching. Wait for the KEDA-owned HPA to go.
+    # Finish/drain the previous run before switching. Stop the ML controller first so it
+    # cannot rescale the consumer after the reset below; Helm recreates it for ML modes.
+    kubectl("delete", "deployment", "streamscale-autoscaler", "--ignore-not-found", "--wait=true")
     if kubectl("get", "crd", "scaledobjects.keda.sh", capture=True, check=False).returncode == 0:
         kubectl(
             "delete", "scaledobject", "streamscale-consumer", "--ignore-not-found", "--wait=true"
@@ -279,6 +281,8 @@ def deploy(metadata, args, wait=True, run_name=None):
         "--timeout",
         "10m",
     ]
+    for key, value in sorted((getattr(args, "autoscaler", None) or {}).items()):
+        arguments.extend(["--set-json", f"autoscaler.{key}={json.dumps(value)}"])
     arguments.extend(
         [
             "--set-json",
@@ -298,7 +302,7 @@ def up(args):
     metadata = build()
     cluster()
     call([TOOLS / "kind", "load", "docker-image", metadata["image"], "--name", CLUSTER])
-    if args.mode != "fixed":
+    if args.mode in {"cpu-hpa", "lag-keda"}:
         from addons import main as install_addons
 
         install_addons()
@@ -309,9 +313,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("build", "up", "status", "logs", "credentials"))
     parser.add_argument("--orders", type=int, default=200)
-    parser.add_argument("--mode", choices=("fixed", "cpu-hpa", "lag-keda"), default="fixed")
     parser.add_argument(
-        "--scenario", choices=("steady", "flash-sale", "overload-recovery"), default="steady"
+        "--mode",
+        choices=("fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive"),
+        default="fixed",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=("steady", "flash-sale", "overload-recovery", "ramp", "repeated-sales"),
+        default="steady",
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--paced", action="store_true")

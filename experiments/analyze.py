@@ -11,8 +11,22 @@ from pathlib import Path
 
 from experiments.evidence import MODES, ROOT, SCENARIOS, audit, read, seconds
 
-COLORS = {"fixed": "#3266a8", "cpu-hpa": "#cc7831", "lag-keda": "#2b896a"}
-LABELS = {"fixed": "Fixed", "cpu-hpa": "CPU-HPA", "lag-keda": "Lag-KEDA"}
+COLORS = {
+    "fixed": "#3266a8",
+    "cpu-hpa": "#cc7831",
+    "lag-keda": "#2b896a",
+    "ml-reactive": "#8a6bb8",
+    "ml-predictive": "#c2416b",
+}
+LABELS = {
+    "fixed": "Fixed",
+    "cpu-hpa": "CPU-HPA",
+    "lag-keda": "Lag-KEDA",
+    "ml-reactive": "ML-reactive",
+    "ml-predictive": "ML-predictive",
+}
+# Protocol v3 adds per-sale readiness/response and controller churn.
+V3_METRICS = ("mean_ready_at_sale_start", "mean_sale_response_seconds", "scale_changes")
 METRICS = (
     "throughput_window_per_second",
     "p95_end_to_end_seconds",
@@ -27,14 +41,19 @@ METRICS = (
 )
 
 
-def aggregate(rows):
+def aggregate(rows, modes=MODES, scenarios=SCENARIOS, metrics=METRICS, repetitions=3):
     results = []
-    for scenario in SCENARIOS:
-        for mode in MODES:
+    for scenario in scenarios:
+        for mode in modes:
             selected = [row for row in rows if row["scenario"] == scenario and row["mode"] == mode]
-            if len(selected) != 3 or {row["repetition"] for row in selected} != {1, 2, 3}:
-                raise RuntimeError("Each comparison requires three distinct measured repetitions")
-            for metric in METRICS:
+            expected = set(range(1, repetitions + 1))
+            if len(selected) != repetitions or {row["repetition"] for row in selected} != expected:
+                raise RuntimeError(
+                    "Each comparison requires three distinct measured repetitions"
+                    if repetitions == 3
+                    else f"Each comparison requires {repetitions} distinct measured repetitions"
+                )
+            for metric in metrics:
                 values = [row[metric] for row in selected if row.get(metric) is not None]
                 results.append(
                     {
@@ -42,7 +61,7 @@ def aggregate(rows):
                         "mode": mode,
                         "metric": metric,
                         "observed": len(values),
-                        "missing": 3 - len(values),
+                        "missing": repetitions - len(values),
                         "median": statistics.median(values) if values else None,
                         "minimum": min(values) if values else None,
                         "maximum": max(values) if values else None,
@@ -225,7 +244,137 @@ def report(campaign, state, frozen, rows, aggregates, verification):
     return "\n".join(lines)
 
 
-def plots(rows, frozen, destination):
+def schedule_for(frozen, scenario):
+    """Repetition-1 schedule for shading; v3 shapes vary by repetition."""
+    entry = frozen["scenarios"][scenario]
+    if "repetitions" in entry:
+        return entry["repetitions"]["1"]["schedule"]
+    return entry["schedule"]
+
+
+def report_v3(campaign, state, frozen, rows, aggregates, verification, scratch=False, subset=None):
+    modes, scenarios = subset or matrix(state)
+    table = {metric: value_table(aggregates, metric) for metric in (*METRICS, *V3_METRICS)}
+    model = frozen["model"]
+    settings = frozen["autoscaler"]
+    repetitions = max(cell["repetition"] for cell in state["plan"])
+    count = len(state["plan"])
+    lines = [
+        "# StreamScale M16 measured results: ML predictive autoscaling",
+        "",
+    ]
+    if scratch:
+        lines += [
+            "> **Scratch subset, not evidence.** This report checks the pipeline end to end; "
+            "it is not the frozen campaign and must not be cited as a result.",
+            "",
+        ]
+    lines += [
+        f"Campaign `{campaign.name}` completed {state['ended_at']}. All **{count} measured "
+        "runs** passed acknowledgement/SQL/DLQ reconciliation before and after a controlled "
+        f"restart. Excluded attempts in this campaign: **{len(state['failures'])}**. The "
+        f"independent audit verified {verification['raw_samples']:,} raw samples.",
+        "",
+        f"Protocol **v{frozen['protocol_version']}**: pilot capacity "
+        f"{frozen['pilot_capacity_per_second']:.2f} accepted events/s; steady "
+        f"**{frozen['rates']['steady']}**/s, surge **{frozen['rates']['surge']}**/s. "
+        f"{len(modes)} modes × {len(scenarios)} scenarios × {repetitions} repetitions in "
+        f"seed-{frozen['order_seed']} randomized order. Ramp and repeated-sales shapes vary "
+        "by repetition from reserved `eval:*` seeds; every mode in a repetition sees the same "
+        "logical sequence.",
+        "",
+        "**Modes.** ML-predictive forecasts the peak arrival rate in four windows over the "
+        f"next 20 s (quantile {model['quantile']} gradient-boosted trees, sha256 "
+        f"`{model['sha256'][:12]}…`, trained on `{model['training_seeds']}` in a simulator "
+        "calibrated against M7) and adapts its bias, per-consumer capacity and pod-start "
+        "delay online. ML-reactive is the ablation: the same one-second planner and actuation, "
+        "assuming the current arrival rate continues and learning nothing. Both choose the "
+        f"fewest consumers whose predicted queueing delay stays within "
+        f"{settings['target_delay_seconds']} s, using frozen capacity "
+        f"{settings['capacity']:.2f}/s per consumer. Neither can read the run schedule. "
+        "Fixed, CPU-HPA and Lag-KEDA keep their M7 settings.",
+        "",
+        "Values are **median [minimum, maximum] across repetitions**. No confidence interval "
+        "or statistical significance is claimed.",
+        "",
+        "| Scenario | Mode | Run p95 latency (s) | Max sampled lag | Ready replica-s "
+        "| Ready at sale start | Sale response (s) | Scale changes |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for scenario in scenarios:
+        for mode in modes:
+            key = (scenario, mode)
+            lines.append(
+                f"| {scenario} | {LABELS[mode]} | {display(table['p95_end_to_end_seconds'][key])}"
+                f" | {display(table['maximum_sampled_lag'][key], 0)}"
+                f" | {display(table['replica_seconds'][key], 0)}"
+                f" | {display(table['mean_ready_at_sale_start'][key])}"
+                f" | {display(table['mean_sale_response_seconds'][key], 1)}"
+                f" | {display(table['scale_changes'][key], 0)} |"
+            )
+    lines += ["", "![Primary outcomes](primary-outcomes.svg)", ""]
+    latency = table["p95_end_to_end_seconds"]
+    replicas = table["replica_seconds"]
+    for scenario in scenarios:
+        ordered = sorted(modes, key=lambda mode: latency[(scenario, mode)]["median"])
+        best = ordered[0]
+        text = (
+            f"For **{scenario}**, {LABELS[best]} had the lowest observed median run p95 "
+            f"({latency[(scenario, best)]['median']:.2f} s, "
+            f"{replicas[(scenario, best)]['median']:.0f} replica-s)."
+        )
+        if {"ml-predictive", "ml-reactive", "lag-keda"} <= set(modes):
+            predictive = (scenario, "ml-predictive")
+            text += (
+                f" ML-predictive: {latency[predictive]['median']:.2f} s and "
+                f"{replicas[predictive]['median']:.0f} replica-s; ML-reactive: "
+                f"{latency[(scenario, 'ml-reactive')]['median']:.2f} s and "
+                f"{replicas[(scenario, 'ml-reactive')]['median']:.0f} replica-s; Lag-KEDA: "
+                f"{latency[(scenario, 'lag-keda')]['median']:.2f} s and "
+                f"{replicas[(scenario, 'lag-keda')]['median']:.0f} replica-s."
+            )
+        lines += [text, ""]
+    lines += [
+        "![Resource outcomes](resource-outcomes.svg)",
+        "",
+        "![Lag and ready replica trajectories](trajectories.svg)",
+        "",
+        "## How to read the ML comparison",
+        "",
+        "- ML-reactive versus Lag-KEDA mostly measures control-loop speed: a one-second loop "
+        "that sets replicas directly, against KEDA's 2 s poll plus the HPA's 15 s sync.",
+        "- ML-predictive versus ML-reactive isolates the forecast and online learning; the "
+        "forecast can only add consumers earlier, never remove them sooner.",
+        "- Ready at sale start counts consumers already Ready when each sale began, averaged "
+        "over a run's sales. Sale response is the time from a sale's start to the next rise "
+        "in ready consumers (missing when none was needed or observed).",
+        "",
+        "## Limitations",
+        "",
+        "- Evaluation shapes come from the same generator and parameter ranges as training, "
+        "under different seeds. Real traffic is not claimed to follow them.",
+        "- The forecaster was trained in a simulator calibrated to M7 medians (±20% or within "
+        "the measured range); simulator error carries into the model.",
+        "- One shared kind node, three repetitions and short windows; carryover, controller "
+        "cadence and fresh-group startup may affect results. Descriptive only.",
+        "- At-least-once delivery; no production, multi-node or exactly-once improvement is "
+        "claimed. Resource integrals are approximations, not billing.",
+        "",
+        f"Image `{state['image']['image']}`; Git `{state['image']['git_commit']}`; dirty build: "
+        f"`{state['image']['git_dirty']}`. Reproduce with `./streamscale.sh experiments-v3 "
+        "--fresh`, then `./streamscale.sh analysis-v3`. See [M16 evidence](../../m16-evidence.md).",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def matrix(state):
+    from experiments.evidence import matrix as campaign_matrix
+
+    return campaign_matrix(state)
+
+
+def plots(rows, frozen, destination, modes=MODES, scenarios=SCENARIOS, title=None):
     os.environ.setdefault("MPLCONFIGDIR", str(ROOT / "artifacts/matplotlib-cache"))
     import matplotlib
 
@@ -244,12 +393,17 @@ def plots(rows, frozen, destination):
     )
     figures = []
 
+    width = 11.7 if len(scenarios) <= 3 else 3.6 * len(scenarios)
+    repetitions = max((row["repetition"] for row in rows), default=3)
+
     def outcomes(name, metrics):
-        figure, axes = plt.subplots(len(metrics), 3, figsize=(11.7, 8.3), layout="constrained")
-        for column, scenario in enumerate(SCENARIOS):
+        figure, axes = plt.subplots(
+            len(metrics), len(scenarios), figsize=(width, 8.3), layout="constrained", squeeze=False
+        )
+        for column, scenario in enumerate(scenarios):
             for index, (metric, label) in enumerate(metrics):
                 axis = axes[index, column]
-                for position, mode in enumerate(MODES):
+                for position, mode in enumerate(modes):
                     points = [
                         row[metric]
                         for row in sorted(rows, key=lambda row: row["repetition"])
@@ -261,7 +415,7 @@ def plots(rows, frozen, destination):
                         continue
                     median = statistics.median(points)
                     axis.scatter(
-                        [position + (i - 1) * 0.13 for i in range(len(points))],
+                        [position + (i - (len(points) - 1) / 2) * 0.13 for i in range(len(points))],
                         points,
                         color=COLORS[mode],
                         s=22,
@@ -276,7 +430,12 @@ def plots(rows, frozen, destination):
                         capsize=5,
                         markersize=5,
                     )
-                axis.set_xticks(range(3), [LABELS[mode] for mode in MODES])
+                axis.set_xticks(
+                    range(len(modes)),
+                    [LABELS[mode] for mode in modes],
+                    rotation=30 if len(modes) > 3 else 0,
+                    fontsize=8 if len(modes) > 3 else None,
+                )
                 axis.set_ylabel(label)
                 values = [
                     row[metric]
@@ -288,7 +447,9 @@ def plots(rows, frozen, destination):
                 axis.grid(axis="y", alpha=0.2)
                 if index == 0:
                     axis.set_title(scenario.replace("-", " ").title())
-        figure.suptitle("StreamScale · " + name.replace("-", " ") + " · n=3 per cell", fontsize=14)
+        figure.suptitle(
+            "StreamScale · " + name.replace("-", " ") + f" · n={repetitions} per cell", fontsize=14
+        )
         for suffix in ("svg", "png"):
             figure.savefig(
                 destination / f"{name}.{suffix}",
@@ -313,17 +474,27 @@ def plots(rows, frozen, destination):
             ("peak_memory_mib", "Peak sampled consumer memory (MiB)"),
         ],
     )
-    figure, axes = plt.subplots(3, 2, figsize=(11.7, 8.3), layout="constrained")
-    for index, scenario in enumerate(SCENARIOS):
+    figure, axes = plt.subplots(
+        len(scenarios),
+        2,
+        figsize=(11.7, max(8.3, 2.8 * len(scenarios))),
+        layout="constrained",
+        squeeze=False,
+    )
+    paired = "repetitions" in next(iter(frozen["scenarios"].values()))
+    for index, scenario in enumerate(scenarios):
         for row in rows:
             if row["scenario"] != scenario:
+                continue
+            if paired and row["repetition"] != 1:
+                # v3 shapes differ by repetition; trajectories overlay the first one only.
                 continue
             source = ROOT / row["artifact_directory"] / "samples.jsonl"
             samples = [json.loads(line) for line in source.read_text().splitlines()]
             start = seconds(row["measurement_start"])
             samples = [sample for sample in samples if sample["time"] >= start]
             lag = [sample for sample in samples if sample["lag"] is not None]
-            label = LABELS[row["mode"]] if row["repetition"] == 1 else None
+            label = LABELS[row["mode"]] if row["repetition"] == 1 and index == 0 else None
             axes[index, 0].plot(
                 [sample["time"] - start for sample in lag],
                 [sum(sample["lag"].values()) for sample in lag],
@@ -344,11 +515,16 @@ def plots(rows, frozen, destination):
         for column in range(2):
             axis = axes[index, column]
             elapsed = 0
-            for duration, rate in frozen["scenarios"][scenario]["schedule"]:
-                if rate == frozen["rates"]["surge"]:
+            for duration, rate in schedule_for(frozen, scenario):
+                surge = (
+                    rate == frozen["rates"]["surge"]
+                    if not paired
+                    else rate > frozen["rates"]["steady"]
+                )
+                if surge:
                     axis.axvspan(elapsed, elapsed + duration, color="#9d8096", alpha=0.12)
                 elapsed += duration
-            axis.axvline(60, color="#555555", linestyle="--", linewidth=0.8)
+            axis.axvline(elapsed, color="#555555", linestyle="--", linewidth=0.8)
             axis.set_title(scenario.replace("-", " ").title())
             axis.set_xlabel("Seconds since publication began")
             axis.set_ylabel("Sampled lag (records)" if column == 0 else "Ready consumers")
@@ -357,7 +533,12 @@ def plots(rows, frozen, destination):
         axes[index, 1].set_yticks([0, 1, 2, 3])
         axes[index, 1].set_ylim(-0.1, 3.2)
     axes[0, 0].legend(frameon=False, ncols=3, fontsize=8)
-    figure.suptitle("StreamScale · every measured trajectory · three repetitions", fontsize=14)
+    figure.suptitle(
+        "StreamScale · measured trajectories · repetition 1 of each shape"
+        if paired
+        else "StreamScale · every measured trajectory · three repetitions",
+        fontsize=14,
+    )
     for suffix in ("svg", "png"):
         figure.savefig(
             destination / f"trajectories.{suffix}",
@@ -382,12 +563,15 @@ def plots(rows, frozen, destination):
         introduction.text(
             0.08,
             0.62,
-            "27 measured runs · 3 modes × 3 scenarios × 3 repetitions\n"
-            "All acknowledged IDs reconciled before/after restart\n"
-            "Same image, logical scenario sequence, resources and partitions\n"
-            "30-second warmup + 60-second base window; late fixtures extend the tail\n"
-            f"Frozen rates: {frozen['rates']['steady']}/s steady · "
-            f"{frozen['rates']['surge']}/s surge",
+            title
+            or (
+                "27 measured runs · 3 modes × 3 scenarios × 3 repetitions\n"
+                "All acknowledged IDs reconciled before/after restart\n"
+                "Same image, logical scenario sequence, resources and partitions\n"
+                "30-second warmup + 60-second base window; late fixtures extend the tail\n"
+                f"Frozen rates: {frozen['rates']['steady']}/s steady · "
+                f"{frozen['rates']['surge']}/s surge"
+            ),
             fontsize=14,
             linespacing=1.8,
             va="top",
@@ -410,25 +594,48 @@ def plots(rows, frozen, destination):
             plt.close(figure)
 
 
+OUTPUTS = {"v2": ROOT / "docs/results/current", "v3": ROOT / "docs/results/m16"}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign", type=Path)
-    parser.add_argument("--output", type=Path, default=ROOT / "docs/results/current")
+    parser.add_argument("--protocol", choices=sorted(OUTPUTS), default="v2")
+    parser.add_argument("--scratch", action="store_true", help="Analyse the latest scratch subset")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    campaign = args.campaign or Path(
-        (ROOT / "artifacts/experiments/latest.path").read_text().strip()
-    )
+    folder = ROOT / "artifacts/experiments" / ("v3" if args.protocol == "v3" else "")
+    if args.scratch:
+        folder = folder / "scratch"
+    campaign = args.campaign or Path((folder / "latest.path").read_text().strip())
     campaign = campaign.resolve()
-    verification = audit(campaign)
     state = read(campaign / "campaign.json")
+    scratch = bool(state.get("scratch")) or state.get("purpose") == "calibration"
+    output = args.output or (
+        ROOT / "artifacts/experiments/scratch-report" if scratch else OUTPUTS[args.protocol]
+    )
+    destination = output.resolve()
+    if scratch and destination.is_relative_to((ROOT / "docs/results").resolve()):
+        raise RuntimeError("Scratch campaigns are never written to docs/results")
+    verification = audit(campaign)
     frozen = read(campaign / "frozen-protocol.json")
+    version = frozen["protocol_version"]
     rows = [
         row | {"peak_memory_mib": row["peak_memory_bytes"] / 1024**2}
         for row in state["rows"]
         if row["phase"] == "measured"
     ]
-    aggregates = aggregate(rows)
-    destination = args.output.resolve()
+    if version >= 3:
+        modes, scenarios = matrix(state)
+        modes = tuple(mode for mode in modes if any(cell["mode"] == mode for cell in state["plan"]))
+        scenarios = tuple(
+            name for name in scenarios if any(cell["scenario"] == name for cell in state["plan"])
+        )
+        repetitions = max(cell["repetition"] for cell in state["plan"])
+        aggregates = aggregate(rows, modes, scenarios, (*METRICS, *V3_METRICS), repetitions)
+    else:
+        modes, scenarios = MODES, SCENARIOS
+        aggregates = aggregate(rows)
     destination.mkdir(parents=True, exist_ok=True)
     for name in ("summary.csv", "comparison.csv", "frozen-protocol.json", "failed-attempts.csv"):
         shutil.copy2(campaign / name, destination / name)
@@ -464,11 +671,27 @@ def main():
         },
     }
     (destination / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-    text = report(campaign, state, frozen, rows, aggregates, verification)
+    if version >= 3:
+        text = report_v3(
+            campaign, state, frozen, rows, aggregates, verification, scratch, (modes, scenarios)
+        )
+        title = (
+            f"{len(rows)} measured runs · {len(modes)} modes × {len(scenarios)} scenarios\n"
+            "ML-predictive vs its ML-reactive ablation and the M7 controllers\n"
+            "All acknowledged IDs reconciled before/after restart\n"
+            f"Frozen rates: {frozen['rates']['steady']}/s steady · "
+            f"{frozen['rates']['surge']}/s surge"
+            + ("\nSCRATCH SUBSET — NOT EVIDENCE" if scratch else "")
+        )
+    else:
+        text = report(campaign, state, frozen, rows, aggregates, verification)
+        title = None
     (destination / "report.md").write_text(text)
-    plots(rows, frozen, destination)
+    plots(rows, frozen, destination, modes, scenarios, title)
+    label = "M16" if version >= 3 else "M8"
     print(
-        f"M8 report: {destination / 'report.md'}\nPresentation: {destination / 'presentation.pdf'}"
+        f"{label} report: {destination / 'report.md'}\n"
+        f"Presentation: {destination / 'presentation.pdf'}"
     )
 
 

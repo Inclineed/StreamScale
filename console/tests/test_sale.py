@@ -146,3 +146,23 @@ def test_presets_reuse_the_frozen_measured_rates(tmp_path):
     assert catalog["rates"] == {"steady": 52, "surge": 390}
     missing = presets(tmp_path / "absent.json")
     assert missing["presets"][0]["schedule"] == flash["schedule"]
+
+
+def test_forecastable_presets_are_valid_v3_sales():
+    from streamscale_console_worker.sale import validate_config
+
+    catalog = {row["id"]: row for row in presets()["presets"]}
+    for identifier in ("ramp", "repeated-sales"):
+        row = catalog[identifier]
+        accepted = validate_config(
+            {
+                "scenario": row["scenario"],
+                "seed": row["seed"],
+                "schedule": row["schedule"],
+                "faults": row["faults"],
+                "mode": "ml-predictive",
+                "preset": identifier,
+            }
+        )
+        assert accepted["scenario"] == identifier and accepted["mode"] == "ml-predictive"
+    assert len(catalog["repeated-sales"]["schedule"]) <= 12

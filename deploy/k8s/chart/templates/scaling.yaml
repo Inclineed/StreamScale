@@ -60,4 +60,112 @@ spec:
         offsetResetPolicy: latest
         allowIdleConsumers: "false"
         excludePersistentLag: "false"
+{{- else if has .Values.scaling.mode (list "ml-reactive" "ml-predictive") }}
+{{- $policy := trimPrefix "ml-" .Values.scaling.mode }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+rules:
+  # Read and resize only the consumer Deployment; nothing else in the namespace.
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [{{ .Release.Name }}-consumer]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [deployments/scale]
+    resourceNames: [{{ .Release.Name }}-consumer]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-autoscaler
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: {{ .Release.Name }}-autoscaler}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-autoscaler
+        app.kubernetes.io/component: autoscaler
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        streamscale/run-name: {{ .Values.run.name | quote }}
+        streamscale/policy: {{ $policy | quote }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-autoscaler
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        {{- include "streamscale.security" . | nindent 8 }}
+      containers:
+        # Deliberately no /runs volume, run ConfigMap or database credentials: the
+        # controller cannot read a run's planned schedule.
+        - name: autoscaler
+          image: {{ include "streamscale.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - autoscale
+            - --policy
+            - {{ $policy }}
+            - --exporter-url
+            - http://{{ .Release.Name }}-exporter:9100/metrics
+            - --deployment
+            - {{ .Release.Name }}-consumer
+            - --metrics-port
+            - "9100"
+            - --capacity
+            - {{ .Values.autoscaler.capacity | quote }}
+            - --target-delay
+            - {{ .Values.autoscaler.targetDelaySeconds | quote }}
+            - --ready-delay
+            - {{ .Values.autoscaler.readyDelaySeconds | quote }}
+            - --scale-down-hold
+            - {{ .Values.autoscaler.scaleDownHoldSeconds | quote }}
+            - --scale-down-interval
+            - {{ .Values.autoscaler.scaleDownIntervalSeconds | quote }}
+          ports:
+            - {name: metrics, containerPort: 9100}
+          startupProbe:
+            httpGet: {path: /health/live, port: metrics}
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /health/live, port: metrics}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /health/ready, port: metrics}
+            periodSeconds: 3
+          securityContext:
+            {{- include "streamscale.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.autoscaler.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+spec:
+  selector: {app: {{ .Release.Name }}-autoscaler}
+  ports:
+    - {name: metrics, port: 9100, targetPort: metrics}
 {{- end }}

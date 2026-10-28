@@ -46,11 +46,12 @@ for a Kafka → PostgreSQL order pipeline, with an interactive console to watch 
 ./streamscale.sh all --no-ui  # same checks, exits when verification finishes
 ```
 
-`all` prepares the environment, runs local and fault checks, deploys a fresh kind
-cluster, exercises all three scaling modes, runs or reuses the measured experiment,
-regenerates the report and runs console acceptance. It then serves the console with
-Grafana and Prometheus links. The first run downloads images and tools; a fresh
-measured campaign can take over an hour.
+`all` prepares the environment, runs local and fault checks, tests and evaluates the
+ML forecaster offline, deploys a fresh kind cluster, exercises all five scaling
+modes, runs or reuses the M16 measured campaign, regenerates its report and runs
+console acceptance. It then serves the console with Grafana and Prometheus links.
+The first run downloads images and tools; a fresh M16 campaign takes about 3.5 hours.
+The M7 results below are committed and not rerun by `all`.
 
 ### Everyday commands
 
@@ -58,8 +59,11 @@ measured campaign can take over an hour.
 | --- | --- |
 | `./streamscale.sh console` | Deploy and serve the interactive console (prints a login link) |
 | `./streamscale.sh cluster` | Deploy and verify a fresh run on the kind cluster |
-| `./streamscale.sh scaling` | Exercise fixed / CPU-HPA / lag-KEDA and their 1–3 replica bounds |
-| `./streamscale.sh experiments [--fresh]` | Run or resume the 27-run measured campaign |
+| `./streamscale.sh scaling` | Exercise fixed / CPU-HPA / lag-KEDA / ML-reactive / ML-predictive and their 1–3 replica bounds |
+| `./streamscale.sh ml` | ML forecaster tests and simulated offline evaluation (no cluster) |
+| `./streamscale.sh experiments-v3 [--fresh]` | Run or resume the M16 75-run campaign (5 modes × 5 scenarios × 3) |
+| `./streamscale.sh analysis-v3` | Audit the M16 campaign and regenerate `docs/results/m16/` |
+| `./streamscale.sh experiments [--fresh]` | Run or resume the M7 27-run measured campaign (not part of `all`) |
 | `./streamscale.sh analysis` | Re-audit raw measurements and regenerate plots, report and PDF |
 | `./streamscale.sh ui` | Open Grafana and Prometheus port forwards |
 | `./streamscale.sh status` | Show this project's containers and Kubernetes resources |
@@ -90,6 +94,12 @@ in randomized order. Values are medians.
 <p align="center">
   <img src="docs/results/current/primary-outcomes.png" alt="Throughput, p95 latency and peak lag for each scenario and scaling mode" width="820">
 </p>
+
+**M16 (in progress):** two more modes, `ml-predictive` (a learned arrival forecast
+driving a one-second planner) and its `ml-reactive` ablation, are implemented and
+pass the live five-mode exercise. Their 75-run measured comparison on five
+scenarios, including a gradual ramp and repeated sales, has not been run yet, so
+no measured result is claimed. See [the design](docs/ml-autoscaling.md).
 
 **Read the full analysis:** [measured report](docs/results/current/report.md) ·
 [presentation (PDF)](docs/results/current/presentation.pdf) ·
@@ -127,7 +137,7 @@ checkout, with the real Kafka and Kubernetes names always visible:
 | **Scaling** | Switch policy or take over manually |
 | **Failure lab** | Inject bounded faults (crashes, outages) and watch recovery |
 | **Sessions** | Replay, reconcile and compare past runs |
-| **Guide** | Five guided demonstrations |
+| **Guide** | Six guided demonstrations |
 
 See the [console guide](docs/console.md) for a walkthrough and its safety scope.
 
@@ -188,7 +198,7 @@ docs/                 guides, evidence and results
 | [Cluster & metrics](docs/deployment-and-metrics.md) | [Console plan](docs/interactive-console-plan.md) | |
 
 <details>
-<summary><b>Milestone evidence (M0–M15)</b>: commands run, observed results and review notes</summary>
+<summary><b>Milestone evidence (M0–M16)</b>: commands run, observed results and review notes</summary>
 
 <br>
 
@@ -208,6 +218,7 @@ docs/                 guides, evidence and results
 | M13 | Failure lab and recovery | [m13](docs/m13-evidence.md) |
 | M14 | Replay, comparison and guided demos | [m14](docs/m14-evidence.md) |
 | M15 | Full browser-to-pipeline acceptance | [m15](docs/m15-evidence.md) |
+| M16 | ML-predictive and ML-reactive modes, ramp and repeated-sales shapes, 75-run protocol v3 (campaign pending) | [m16](docs/m16-evidence.md) |
 | UI | Focused task pages and mobile layout | [ui-refinement](docs/ui-refinement-evidence.md) |
 
 The complete M0–M15 launcher, including live-cluster and browser acceptance, passed on 2026-10-12.

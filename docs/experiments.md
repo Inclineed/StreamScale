@@ -1,8 +1,16 @@
 # Measured experiment protocol
 
-M7 is implemented but remains in progress until the pilot and all 27 measured
-cells have passed. Run `./streamscale.sh experiments`, or add `--fresh` to create
-a new campaign while retaining all previous evidence. `all` includes this stage.
+This page describes protocol v2 (M7, 27 runs). M16's protocol v3 adds the
+`ml-reactive` and `ml-predictive` modes and the ramp and repeated-sales shapes in
+a 75-run campaign; it is described in [ML predictive autoscaling](ml-autoscaling.md#measured-protocol-v3)
+and run with `./streamscale.sh experiments-v3`. Since M16, `all` runs the v3
+campaign; v2 stays runnable with `./streamscale.sh experiments` and its committed
+results in `docs/results/current/` are not rewritten. A complete retained
+campaign is verified by checksums even after later code changes; resuming an
+incomplete one still requires unchanged code.
+
+M7 is implemented. Run `./streamscale.sh experiments`, or add `--fresh` to create
+a new campaign while retaining all previous evidence.
 Only one cluster workflow may run at a time; the launcher takes an exclusive
 lock. Do not start a separate cluster/scaling run during measurements.
 

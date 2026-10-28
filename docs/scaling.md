@@ -1,4 +1,14 @@
-# Scaling modes (M6)
+# Scaling modes (M6, M16)
+
+M16 adds `ml-reactive` and `ml-predictive`: a one-second controller Deployment
+sets the consumer's replicas (1–3) directly through the `scale` subresource, with
+no HPA or ScaledObject. See [ML predictive autoscaling](ml-autoscaling.md) for the
+model, its RBAC and isolation checks. `./streamscale.sh scaling` exercises all
+five modes and retains each ML run's `autoscaler-decisions.json`.
+
+```sh
+uv run --frozen python deploy/k8s/manage.py up --mode ml-predictive --orders 3000
+```
 
 All modes use the same image, three input partitions and consumer resources:
 100m CPU / 128Mi requests, 500m CPU / 256Mi limits. Fixed starts one replica;

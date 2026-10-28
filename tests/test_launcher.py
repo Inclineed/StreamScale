@@ -123,13 +123,17 @@ def test_complete_flow_preserves_env_uses_fresh_run_and_executes_current_milesto
         "test",
         "check",
         "integration",
+        "ml-test",
+        "ml-eval",
         "k8s-up",
         "k8s-verify",
         "scaling",
-        "experiments",
-        "analysis",
+        "experiments-v3",
+        "analysis-v3",
         "console-check",
     ]
+    # M7's v2 campaign and report are not rerun or rewritten by all.
+    assert "experiments" not in targets and "analysis" not in targets
     directory = (checkout / "artifacts/launcher/last-local-run.path").read_text().strip()
     assert Path(directory).parent.is_dir()
     assert ["make", "demo", f"RUN_DIR={directory}"] in calls
@@ -229,3 +233,17 @@ def test_invalid_ui_options_fail_before_services_or_publication(launcher, argume
     result, calls, _ = launcher(*arguments)
     assert result.returncode == 2
     assert calls == []
+
+
+def test_m16_campaign_has_its_own_fresh_and_analysis_commands(launcher):
+    result, calls, _ = launcher("experiments-v3", "--fresh")
+    assert result.returncode == 0, result.stderr
+    assert [call[1] for call in calls if call[0] == "make"] == ["experiments-v3-fresh"]
+    seen = len(calls)
+    result, calls, _ = launcher("analysis-v3")
+    assert result.returncode == 0, result.stderr
+    # The fake-call log accumulates across invocations in one test.
+    assert [call[1] for call in calls[seen:] if call[0] == "make"] == ["analysis-v3"]
+    result, _, _ = launcher("cluster", "--fresh")
+    assert result.returncode == 2
+    assert "experiments or experiments-v3" in result.stderr

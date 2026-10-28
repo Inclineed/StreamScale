@@ -62,7 +62,7 @@ explanation and the point where the analogy stops being accurate.
 | Checkout lanes 0–2 | Partitions 0–2 of `orders.events.v1` |
 | Tickets issued / now serving / queue length | High watermark / committed offset / lag |
 | Cashiers and the lanes they cover | Console consumer pods and their partition assignment |
-| Floor manager | Scaling controller (fixed, manual, CPU-HPA, lag-KEDA) |
+| Floor manager | Scaling controller (fixed, manual, CPU-HPA, lag-KEDA, ML-reactive, ML-predictive) |
 | Sales ledger | PostgreSQL `order_event` and `order_state` |
 | Problem-items desk | Dead-letter topic `orders.events.dlq.v1` |
 
@@ -163,8 +163,20 @@ The **Scaling** page chooses how many console consumers run:
 | Manual | 0–3 | You. Zero stops processing; it is not a crash. |
 | CPU-HPA | 1–3 | Kubernetes, from CPU use relative to the pod's request (target 60%). |
 | Lag-KEDA | 1–3 | KEDA, from consumer-group lag per replica (threshold 100). |
+| ML-reactive | 1–3 | The agent's one-second planner at the current arrival rate (M16 ablation). |
+| ML-predictive | 1–3 | The same planner with the learned arrival forecast and online estimates (M16). |
 
-From CPU-HPA or lag-KEDA, **Manual override** removes the autoscaler first and
+In the two ML modes the agent itself sets replicas; no HPA or ScaledObject exists.
+The **Latest controller decision** panel shows the arrival rate, the planned peak,
+the predicted wait for 1, 2 and 3 consumers against the 3 s target, the learned
+capacity, start-up time and forecast bias, and the reason for each change. The
+loop pauses during a manual override, a scaling transition or a stopped-consumers
+fault. Sessions record the latest decision with each telemetry frame. The **Sale**
+page adds *Gradual ramp* and *Repeated sales* presets, which follow the M16
+campaign's shapes (the ramp coarsened to the console's 12-phase limit). See
+[ML predictive autoscaling](ml-autoscaling.md).
+
+From CPU-HPA, lag-KEDA or an ML mode, **Manual override** removes or pauses the autoscaler first and
 then sets replicas directly, so two controllers never compete; *Release* recreates
 it. Every change is a verified transition: the page shows its steps, then which
 controllers own the console Deployment and whether that matches the mode. A
@@ -228,9 +240,9 @@ Choose **Sessions** in the main navigation:
 
 ## Guided demonstrations and presenting (M14)
 
-The **Guide** page walks through five demonstrations, one step at a time with a
+The **Guide** page walks through six demonstrations, one step at a time with a
 button for each action and what to watch: *No scaling*, *Manual rescue*, *CPU versus
-lag*, *Database bottleneck* and *Crash and replay*. The expandable glossary maps every Store
+lag*, *Forecast versus lag* (M16), *Database bottleneck* and *Crash and replay*. The expandable glossary maps every Store
 term to its System term and states where the analogy stops.
 
 **View options → Present** (key `p`) enters full-screen presentation with a larger floor and

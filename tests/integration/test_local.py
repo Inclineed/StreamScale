@@ -55,9 +55,9 @@ def test_live_publish_consume_and_postgres(settings):
 
 def test_applied_migration_is_idempotent_and_checksum_protected(scratch_database, tmp_path):
     assert migrate(scratch_database) == []
+    copy_migrations(tmp_path)
     body = (asset_directory("migrations") / "0001_initial.sql").read_bytes()
     copy = tmp_path / "0001_initial.sql"
-    copy.write_bytes(body)
     assert migrate(scratch_database, tmp_path) == []
     with psycopg.connect(scratch_database) as connection:
         stored = connection.execute("SELECT sha256 FROM _streamscale_migration").fetchone()[0]
@@ -67,18 +67,25 @@ def test_applied_migration_is_idempotent_and_checksum_protected(scratch_database
         migrate(scratch_database, tmp_path)
 
 
+def copy_migrations(directory):
+    """Copy every real migration so a test revision matches the scratch database."""
+    applied = sorted(asset_directory("migrations").glob("[0-9]*_*.sql"))
+    for source in applied:
+        (directory / source.name).write_bytes(source.read_bytes())
+    return len(applied)
+
+
 def test_failing_migration_rolls_back_ddl_and_ledger(scratch_database, tmp_path):
-    (tmp_path / "0001_initial.sql").write_bytes(
-        (asset_directory("migrations") / "0001_initial.sql").read_bytes()
-    )
-    (tmp_path / "0002_failure.sql").write_text(
+    existing = copy_migrations(tmp_path)
+    (tmp_path / "9999_failure.sql").write_text(
         "CREATE TABLE should_rollback (id INT); SELECT * FROM nonexistent_table;"
     )
     with pytest.raises(psycopg.errors.UndefinedTable):
         migrate(scratch_database, tmp_path)
     with psycopg.connect(scratch_database) as connection:
         assert connection.execute("SELECT to_regclass('should_rollback')").fetchone()[0] is None
-        assert connection.execute("SELECT count(*) FROM _streamscale_migration").fetchone()[0] == 1
+        ledger = connection.execute("SELECT count(*) FROM _streamscale_migration").fetchone()[0]
+        assert ledger == existing
 
 
 def test_event_id_is_global_and_source_coordinate_is_unique(scratch_database):

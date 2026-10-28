@@ -85,6 +85,8 @@ Before ranking performance, reconcile producer acknowledgements, accepted unique
 
 Keep the first version to one input topic, one DLQ, one PostgreSQL database, one consumer implementation and one metrics stack. Do not add payment settlement, inventory reservation, fraud detection, personal data, customer-facing flows, Spark, Flink, Airflow, Kafka Connect, Schema Registry, Kafka transactions, predictive autoscaling, multiple cloud providers, or a full web dashboard. Do not generate names, email addresses, addresses or payment credentials.
 
+> **Scope change (M16, 2026-10-28, user-requested):** predictive autoscaling is now in scope as two additional alternative modes, `ml-predictive` and its `ml-reactive` ablation, measured in a separate protocol v3 campaign beside the unchanged M7 results. The other boundaries still apply. See `docs/ml-autoscaling.md`.
+
 ## Suggested repository layout
 
 ```text

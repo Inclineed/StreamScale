@@ -14,6 +14,10 @@ from streamscale.smoke import smoke
 from streamscale.storage import IntegrityFailure
 from streamscale.topics import ensure_topics
 
+# Measured scaling modes and scenarios; db/migrations/0002 widens the SQL checks to match.
+MODES = ("fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive")
+SCENARIOS = ("steady", "flash-sale", "overload-recovery", "ramp", "repeated-sales")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="streamscale")
@@ -24,13 +28,11 @@ def main() -> int:
     workload.add_argument("--output", type=Path, required=True)
     workload.add_argument("--seed", type=int, default=42)
     workload.add_argument("--orders", type=int, default=100)
-    workload.add_argument(
-        "--scenario", choices=("steady", "flash-sale", "overload-recovery"), default="steady"
-    )
+    workload.add_argument("--scenario", choices=SCENARIOS, default="steady")
     workload.add_argument(
         "--profile", choices=("normal", "correctness", "fixtures"), default="normal"
     )
-    workload.add_argument("--mode", choices=("fixed", "cpu-hpa", "lag-keda"), default="fixed")
+    workload.add_argument("--mode", choices=MODES, default="fixed")
     workload.add_argument(
         "--group-id", help="Unique execution group, also used by the Kafka scaler"
     )
@@ -74,6 +76,32 @@ def main() -> int:
         service = commands.add_parser(name)
         service.add_argument("--run-dir", type=Path, required=True)
         service.add_argument("--metrics-port", type=int, default=9100)
+    replayer = commands.add_parser(
+        "autoscale-replay", help="Show an autoscaling policy's decisions over a trace"
+    )
+    source = replayer.add_mutually_exclusive_group(required=True)
+    source.add_argument("--trace", type=Path, help="Observation JSONL file")
+    source.add_argument(
+        "--synthetic",
+        choices=("steady", "flash-sale", "overload-recovery"),
+        help="Open-loop trace of one fixed consumer serving a v2 scenario",
+    )
+    replayer.add_argument("--policy", choices=("reactive", "predictive"), default="reactive")
+    replayer.add_argument("--capacity", type=float, default=130.0)
+    replayer.add_argument("--output", type=Path, help="Write every decision as JSONL")
+    autoscaler = commands.add_parser(
+        "autoscale", help="Run the ml-predictive or ml-reactive replica controller"
+    )
+    autoscaler.add_argument("--policy", choices=("reactive", "predictive"), required=True)
+    autoscaler.add_argument("--exporter-url", required=True)
+    autoscaler.add_argument("--deployment", required=True)
+    autoscaler.add_argument("--metrics-port", type=int, default=9100)
+    autoscaler.add_argument("--model", type=Path, help="Forecaster JSON (default: packaged)")
+    autoscaler.add_argument("--capacity", type=float, required=True)
+    autoscaler.add_argument("--target-delay", type=float, default=3.0)
+    autoscaler.add_argument("--ready-delay", type=float, default=5.0)
+    autoscaler.add_argument("--scale-down-hold", type=float, default=10.0)
+    autoscaler.add_argument("--scale-down-interval", type=float, default=20.0)
     args = parser.parse_args()
     try:
         if args.command == "topics":
@@ -129,6 +157,57 @@ def main() -> int:
             from streamscale.measurements import export_measurements
 
             result = export_measurements(args.run_dir, Settings.from_env())
+        elif args.command == "autoscale-replay":
+            from streamscale.autoscale.planner import PlannerConfig
+            from streamscale.autoscale.replay import (
+                SYNTHETIC,
+                open_loop_trace,
+                read_trace,
+                replay,
+                summarize,
+            )
+
+            config = PlannerConfig(capacity_per_consumer=args.capacity)
+            trace = (
+                read_trace(args.trace)
+                if args.trace
+                else open_loop_trace(SYNTHETIC[args.synthetic], capacity=args.capacity)
+            )
+            decisions = replay(trace, args.policy, config)
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(
+                    "".join(json.dumps(item.to_dict()) + "\n" for item in decisions)
+                )
+            result = summarize(decisions, args.policy)
+        elif args.command == "autoscale":
+            from streamscale.autoscale.controller import Controller, serve_controller
+            from streamscale.autoscale.kube import DeploymentScaler
+            from streamscale.autoscale.planner import PlannerConfig
+
+            forecaster = None
+            if args.policy == "predictive":
+                from streamscale.autoscale.forecast import load
+
+                forecaster = load(args.model)
+            config = PlannerConfig(
+                capacity_per_consumer=args.capacity,
+                target_delay_seconds=args.target_delay,
+                ready_delay_seconds=args.ready_delay,
+                scale_down_hold_seconds=args.scale_down_hold,
+                scale_down_interval_seconds=args.scale_down_interval,
+            )
+            stop = Event()
+            signal.signal(signal.SIGTERM, lambda *_: stop.set())
+            signal.signal(signal.SIGINT, lambda *_: stop.set())
+            controller = Controller(
+                args.policy,
+                config,
+                DeploymentScaler(args.deployment),
+                args.exporter_url,
+                forecaster,
+            )
+            result = serve_controller(controller, args.metrics_port, stop)
         elif args.command == "bootstrap":
             from streamscale.service import bootstrap
 

@@ -26,7 +26,9 @@
           "enum": [
             "fixed",
             "cpu-hpa",
-            "lag-keda"
+            "lag-keda",
+            "ml-reactive",
+            "ml-predictive"
           ]
         },
         "minReplicas": {
@@ -52,6 +54,23 @@
           "type": "integer",
           "minimum": 0
         }
+      }
+    },
+    "autoscaler": {
+      "type": "object",
+      "required": [
+        "capacity",
+        "targetDelaySeconds",
+        "readyDelaySeconds",
+        "scaleDownHoldSeconds",
+        "scaleDownIntervalSeconds"
+      ],
+      "properties": {
+        "capacity": {"type": "number", "exclusiveMinimum": 0},
+        "targetDelaySeconds": {"type": "number", "exclusiveMinimum": 0},
+        "readyDelaySeconds": {"type": "number", "minimum": 0},
+        "scaleDownHoldSeconds": {"type": "number", "minimum": 0},
+        "scaleDownIntervalSeconds": {"type": "number", "minimum": 0}
       }
     },
     "run": {
@@ -84,7 +103,9 @@
           "enum": [
             "steady",
             "flash-sale",
-            "overload-recovery"
+            "overload-recovery",
+            "ramp",
+            "repeated-sales"
           ]
         },
         "profile": {

@@ -272,6 +272,8 @@ export type Sample = {
   consumers: ConsumerScrape[];
   sale?: (SaleStatus & { state: string }) | { state: "idle" } | null;
   scaling?: Record<string, unknown> | null;
+  // ML-reactive / ML-predictive controller status and recent decisions (M16).
+  autoscaler?: Record<string, unknown> | null;
   faults?: Record<string, unknown> | null;
   dlq?: { codes: Record<string, number>; copies_read: number } | null;
 };

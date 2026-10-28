@@ -19,6 +19,24 @@ scrape_configs:
         action: keep
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: pod
+  # Present only in ml-reactive / ml-predictive modes.
+  - job_name: autoscaler
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+        regex: {{ .Release.Name }}
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+        regex: autoscaler
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
   - job_name: run-exporter
     static_configs:
       - targets: [{{ .Release.Name }}-exporter:9100]

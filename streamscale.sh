@@ -12,19 +12,27 @@ KUBECONFIG_FILE="$ROOT/artifacts/kubeconfig"
 
 usage() {
     cat <<'HELP'
-StreamScale launcher — integrated milestones M0–M15
+StreamScale launcher — integrated milestones M0–M16
 
 Usage: ./streamscale.sh [command] [options]
 
-  all [--no-ui]  Setup, checks, scaling, measured matrix, plots/report, console
-                acceptance, then the console with dashboards. This is the default.
+  all [--no-ui]  Setup, checks, ML tests and offline evaluation, scaling, the M16
+                measured matrix, plots/report, console acceptance, then the console
+                with dashboards. This is the default.
                 --no-ui finishes without opening the console or port forwards.
   local         Setup and run a fresh local Kafka/PostgreSQL fixture demo.
   check         Start local dependencies and run unit, lint and live integration checks.
   cluster       Setup and deploy/verify a fresh kind cluster execution.
-  scaling       Exercise fixed/CPU-HPA/lag-KEDA independently; retain replica evidence.
-  experiments [--fresh]  Pilot and 27 measured runs; resume/reuse retained evidence.
-  analysis      Audit completed measurements and regenerate SVG/PNG/PDF/report.
+  scaling       Exercise fixed/CPU-HPA/lag-KEDA/ML-reactive/ML-predictive independently;
+                retain replica and controller-decision evidence.
+  ml            ML forecaster tests and simulated offline evaluation (no cluster).
+  ml-train      Refit the simulator to M7, retune and retrain the packaged forecaster.
+  experiments-v3 [--fresh]
+                M16: pilot and 75 measured runs (5 modes × 5 scenarios × 3); resume or
+                reuse retained evidence. Results go to docs/results/m16.
+  analysis-v3   Audit the M16 campaign and regenerate its plots, report and PDF.
+  experiments [--fresh]  M7: pilot and 27 measured runs (protocol v2); not part of all.
+  analysis      Audit the M7 campaign and regenerate docs/results/current.
   verify        Verify the current fresh cluster execution without republishing.
   inspect-local Reinspect the latest local demo made by this launcher.
   ui [--grafana-port PORT] [--prometheus-port PORT]
@@ -51,7 +59,8 @@ Grafana login: artifacts/k8s/credentials.json
 
 Close the dashboard terminal with Ctrl+C before running stop in another terminal.
 all/local/cluster create fresh executions and preserve earlier runs.
-experiments uses a frozen pilot-calibrated protocol and may take over an hour.
+experiments uses a frozen pilot-calibrated protocol and may take over an hour;
+experiments-v3 takes about 3.5 hours. M7's committed results are never rewritten by all.
 --fresh creates a new measured campaign while retaining earlier results.
 After resume, use all or cluster for a fresh counter-based acceptance check.
 Cluster verification waits up to 60 seconds for metrics to reflect SQL reconciliation.
@@ -248,8 +257,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --fresh)
-            if [[ "$command" != experiments ]]; then
-                printf '%s is only supported with experiments.\n' "$1" >&2
+            if [[ "$command" != experiments && "$command" != experiments-v3 ]]; then
+                printf '%s is only supported with experiments or experiments-v3.\n' "$1" >&2
                 exit 2
             fi
             fresh=true
@@ -300,18 +309,23 @@ case "$command" in
         make smoke
         local_demo
         checks
+        printf '\n[M16] Testing the ML forecaster and evaluating every policy in simulation.\n'
+        make ml-test
+        make ml-eval
         printf '\n[M5] Deploying a fresh cluster execution and checking SQL/metrics/Grafana.\n'
         cluster_demo
-        printf '\n[M6] Exercising the three isolated scaling modes and replica bounds.\n'
+        printf '\n[M6/M16] Exercising the five isolated scaling modes and replica bounds.\n'
         make scaling
-        printf '\n[M7] Running or verifying the pilot and frozen 27-run experiment matrix.\n'
-        make experiments
-        printf '\n[M8] Auditing measurements and generating plots, report and presentation.\n'
-        make analysis
+        # M7/M8 (protocol v2) stay available as experiments/analysis; their committed
+        # results in docs/results/current are never rewritten here.
+        printf '\n[M16] Running or verifying the pilot and frozen 75-run experiment matrix.\n'
+        make experiments-v3
+        printf '\n[M16] Auditing measurements and generating the M16 plots, report and PDF.\n'
+        make analysis-v3
         printf '\n[M9–M15] Verifying the interactive console against the live cluster and browser.\n'
         make console-check
         status
-        printf '\nM0–M15 passed. Report: docs/results/current/report.md; console evidence: artifacts/console/.\n'
+        printf '\nM0–M16 passed. Reports: docs/results/m16/report.md and docs/results/current/report.md; console evidence: artifacts/console/.\n'
         if [[ "$no_ui" == false ]]; then console_serve; fi
         ;;
     local) setup; local_start; make smoke; local_demo ;;
@@ -323,7 +337,15 @@ case "$command" in
         start_cluster_nodes
         if [[ "$fresh" == true ]]; then make experiments-fresh; else make experiments; fi
         ;;
+    experiments-v3)
+        setup
+        start_cluster_nodes
+        if [[ "$fresh" == true ]]; then make experiments-v3-fresh; else make experiments-v3; fi
+        ;;
     analysis) require_command uv; require_command make; make analysis ;;
+    analysis-v3) require_command uv; require_command make; make analysis-v3 ;;
+    ml) setup; make ml-test ml-eval ;;
+    ml-train) setup; make ml-fit ml-train ml-eval ;;
     verify) require_command make; make k8s-verify ;;
     inspect-local)
         require_command uv

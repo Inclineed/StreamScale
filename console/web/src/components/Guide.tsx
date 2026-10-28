@@ -165,6 +165,58 @@ export const DEMOS: Demo[] = [
     ],
   },
   {
+    id: "forecast-vs-lag",
+    title: "Forecast versus lag",
+    store:
+      "A manager who learns the rhythm of repeated rushes, against one who waits for queues.",
+    system:
+      "Run the repeated-sales preset under lag-KEDA, then ML-predictive, as fresh runs.",
+    steps: [
+      {
+        store: "Hire the “queues are long” manager.",
+        system: "Lag-KEDA mode.",
+        action: {
+          kind: "scaling.mode",
+          params: { mode: "lag-keda" },
+          label: "Lag-KEDA",
+        },
+      },
+      {
+        store: "Run several rushes about half a minute apart.",
+        system: "Start the repeated-sales preset.",
+        action: {
+          kind: "sale.start",
+          params: { preset: "repeated-sales" },
+          label: "Start repeated sales",
+        },
+        watch:
+          "Each rush builds a queue before KEDA's HPA adds cashiers, and they stay for a minute after.",
+        done: idle,
+      },
+      {
+        store: "Hire the manager who expects the rush.",
+        system: "ML-predictive mode (forecast plus a one-second planner).",
+        action: {
+          kind: "scaling.mode",
+          params: { mode: "ml-predictive" },
+          label: "ML-predictive",
+        },
+      },
+      {
+        store: "Run the same repeated sales again.",
+        system: "Start the same preset (fresh run and group).",
+        action: {
+          kind: "sale.start",
+          params: { preset: "repeated-sales" },
+          label: "Start repeated sales",
+        },
+        watch:
+          "Open Scaling: the decision panel shows the forecast and predicted waits behind each change. Compare both sessions in Sessions.",
+        done: idle,
+      },
+    ],
+  },
+  {
     id: "db-bottleneck",
     title: "Database bottleneck",
     store: "The back office slows down; more cashiers cannot help.",

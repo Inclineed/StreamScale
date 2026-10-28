@@ -198,4 +198,40 @@ def summarize(run, measurements, samples, before, after, configuration):
         "controlled_restart_passed": int(correct(after)),
         "protocol_version": configuration["protocol_version"],
     }
+    if configuration["protocol_version"] >= 3:
+        row.update(sale_metrics(visible, start, configuration.get("sale_starts", [])))
+        row["shape_seed"] = configuration.get("shape_seed")
     return row
+
+
+def sale_metrics(samples, start, sale_starts):
+    """Protocol v3: readiness at each sale's start, per-sale response and scale changes."""
+    ordered = sorted(samples, key=lambda sample: sample["time"])
+    desired = [sample["desired"] for sample in ordered if sample.get("desired") is not None]
+    changes = sum(1 for before, after in zip(desired, desired[1:], strict=False) if after != before)
+    ready_at, responses = [], []
+    bounds = [*sale_starts[1:], None] if sale_starts else []
+    for offset, following in zip(sale_starts, bounds, strict=True):
+        moment = start + offset
+        until = None if following is None else start + following
+        before = [sample for sample in ordered if sample["time"] <= moment]
+        if not before:
+            continue
+        initial = before[-1]["ready"]
+        ready_at.append(initial)
+        rises = [
+            sample["time"] - moment
+            for sample in ordered
+            if sample["time"] > moment
+            and (until is None or sample["time"] < until)
+            and sample["ready"] > initial
+        ]
+        if initial < 3 and rises:
+            responses.append(min(rises))
+    return {
+        "sales": len(sale_starts),
+        "mean_ready_at_sale_start": sum(ready_at) / len(ready_at) if ready_at else None,
+        "min_ready_at_sale_start": min(ready_at) if ready_at else None,
+        "mean_sale_response_seconds": sum(responses) / len(responses) if responses else None,
+        "scale_changes": changes,
+    }

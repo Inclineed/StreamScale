@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streamscale-ml"
+version = "0.1.0"
+description = "Offline simulator, forecaster training and evaluation for ml-predictive scaling"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "numpy==2.5.4",
+  "scikit-learn==1.9.1",
+  # Training reuses the measured controller and shapes unchanged; they are not re-locked here.
+  "streamscale",
+]
+
+[tool.uv.sources]
+streamscale = { path = "..", editable = true }
+
+[dependency-groups]
+dev = ["pytest==9.0.2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["streamscale_ml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

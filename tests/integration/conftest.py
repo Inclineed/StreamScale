@@ -21,7 +21,7 @@ def scratch_database(settings):
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
     database = make_conninfo(settings.database_url, options=f"-c search_path={schema}")
     try:
-        assert migrate(database) == ["0001_initial.sql"]
+        assert migrate(database) == ["0001_initial.sql", "0002_ml_modes_and_v3_scenarios.sql"]
         yield database
     finally:
         with psycopg.connect(settings.database_url, autocommit=True) as connection:

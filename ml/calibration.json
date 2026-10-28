@@ -1,0 +1,347 @@
+{
+  "source": "docs/results/current (M7 v2 medians)",
+  "cluster_source": null,
+  "rates": {
+    "steady": 52,
+    "surge": 390
+  },
+  "cluster": {
+    "capacity": 129.0,
+    "efficiency_3": 0.95,
+    "ready_delay": 2.0,
+    "probe_lag": 3.0,
+    "rebalance_pause": 0.5,
+    "startup_seconds": 2.0,
+    "base_latency": 0.6,
+    "extra_fraction": 0.02,
+    "late_fraction": 0.05,
+    "late_seconds": 10,
+    "hpa_phase": 4.0,
+    "cpu_base": 0.01,
+    "cpu_per_record": 0.00085
+  },
+  "tolerance": 0.2,
+  "cluster_tolerance": 0.3,
+  "comparison": [
+    {
+      "scenario": "steady",
+      "mode": "fixed",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 100.78,
+        "measured": 40.0,
+        "measured_range": [
+          39.0,
+          41.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 65.0,
+        "measured": 73.01,
+        "measured_range": [
+          72.00806975364685,
+          73.01720714569092
+        ]
+      },
+      "p95_latency": {
+        "simulated": 0.6,
+        "measured": 0.71,
+        "measured_range": [
+          0.699901819229126,
+          0.7093229293823242
+        ]
+      },
+      "scaling_response": {
+        "simulated": null,
+        "measured": null,
+        "measured_range": null
+      }
+    },
+    {
+      "scenario": "steady",
+      "mode": "cpu-hpa",
+      "gated": false,
+      "peak_lag": {
+        "simulated": 100.78,
+        "measured": 39.0,
+        "measured_range": [
+          38.0,
+          39.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 65.0,
+        "measured": 72.01,
+        "measured_range": [
+          72.00199365615845,
+          72.01350736618042
+        ]
+      },
+      "p95_latency": {
+        "simulated": 0.6,
+        "measured": 0.7,
+        "measured_range": [
+          0.7047669887542725,
+          0.7080459594726562
+        ]
+      },
+      "scaling_response": {
+        "simulated": null,
+        "measured": null,
+        "measured_range": null
+      }
+    },
+    {
+      "scenario": "steady",
+      "mode": "lag-keda",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 100.78,
+        "measured": 38.0,
+        "measured_range": [
+          37.0,
+          38.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 65.0,
+        "measured": 71.01,
+        "measured_range": [
+          71.00471425056458,
+          73.01263546943665
+        ]
+      },
+      "p95_latency": {
+        "simulated": 0.6,
+        "measured": 0.7,
+        "measured_range": [
+          0.6997029781341553,
+          0.7088890075683594
+        ]
+      },
+      "scaling_response": {
+        "simulated": null,
+        "measured": null,
+        "measured_range": null
+      }
+    },
+    {
+      "scenario": "flash-sale",
+      "mode": "fixed",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 5203.62,
+        "measured": 5150.0,
+        "measured_range": [
+          5150.0,
+          5172.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 83.0,
+        "measured": 90.01,
+        "measured_range": [
+          87.00535559654236,
+          90.0386528968811
+        ]
+      },
+      "p95_latency": {
+        "simulated": 39.6,
+        "measured": 37.81,
+        "measured_range": [
+          37.54672908782959,
+          37.832826137542725
+        ]
+      },
+      "scaling_response": {
+        "simulated": null,
+        "measured": null,
+        "measured_range": null
+      }
+    },
+    {
+      "scenario": "flash-sale",
+      "mode": "cpu-hpa",
+      "gated": false,
+      "peak_lag": {
+        "simulated": 5203.62,
+        "measured": 5144.0,
+        "measured_range": [
+          5122.0,
+          5156.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 112.0,
+        "measured": 128.02,
+        "measured_range": [
+          124.99370670318604,
+          140.04161429405212
+        ]
+      },
+      "p95_latency": {
+        "simulated": 23.6,
+        "measured": 20.35,
+        "measured_range": [
+          16.191406965255737,
+          26.072152137756348
+        ]
+      },
+      "scaling_response": {
+        "simulated": 24.0,
+        "measured": 27.48,
+        "measured_range": [
+          25.067835807800293,
+          33.7300226688385
+        ]
+      }
+    },
+    {
+      "scenario": "flash-sale",
+      "mode": "lag-keda",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 2046.35,
+        "measured": 1714.0,
+        "measured_range": [
+          1580.0,
+          1758.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 157.0,
+        "measured": 173.01,
+        "measured_range": [
+          170.029953956604,
+          175.9988558292389
+        ]
+      },
+      "p95_latency": {
+        "simulated": 6.6,
+        "measured": 4.49,
+        "measured_range": [
+          4.1776649951934814,
+          4.628970146179199
+        ]
+      },
+      "scaling_response": {
+        "simulated": 9.0,
+        "measured": 8.24,
+        "measured_range": [
+          7.570111274719238,
+          9.629964113235474
+        ]
+      }
+    },
+    {
+      "scenario": "overload-recovery",
+      "mode": "fixed",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 9467.1,
+        "measured": 9124.0,
+        "measured_range": [
+          9072.0,
+          9164.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 116.0,
+        "measured": 120.02,
+        "measured_range": [
+          120.01113438606262,
+          121.01498198509216
+        ]
+      },
+      "p95_latency": {
+        "simulated": 71.6,
+        "measured": 67.34,
+        "measured_range": [
+          66.95687198638916,
+          67.51540684700012
+        ]
+      },
+      "scaling_response": {
+        "simulated": null,
+        "measured": null,
+        "measured_range": null
+      }
+    },
+    {
+      "scenario": "overload-recovery",
+      "mode": "cpu-hpa",
+      "gated": false,
+      "peak_lag": {
+        "simulated": 7877.18,
+        "measured": 9131.0,
+        "measured_range": [
+          9127.0,
+          9176.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 142.0,
+        "measured": 137.01,
+        "measured_range": [
+          128.06227779388428,
+          147.01085662841797
+        ]
+      },
+      "p95_latency": {
+        "simulated": 25.6,
+        "measured": 24.84,
+        "measured_range": [
+          24.028853178024292,
+          34.38049101829529
+        ]
+      },
+      "scaling_response": {
+        "simulated": 24.0,
+        "measured": 40.31,
+        "measured_range": [
+          37.66556239128113,
+          52.65743136405945
+        ]
+      }
+    },
+    {
+      "scenario": "overload-recovery",
+      "mode": "lag-keda",
+      "gated": true,
+      "peak_lag": {
+        "simulated": 2730.08,
+        "measured": 3510.0,
+        "measured_range": [
+          1884.0,
+          5794.0
+        ]
+      },
+      "replica_seconds": {
+        "simulated": 187.0,
+        "measured": 190.02,
+        "measured_range": [
+          170.99554896354675,
+          202.01471829414368
+        ]
+      },
+      "p95_latency": {
+        "simulated": 7.6,
+        "measured": 8.95,
+        "measured_range": [
+          5.018882989883423,
+          14.602005004882812
+        ]
+      },
+      "scaling_response": {
+        "simulated": 9.0,
+        "measured": 14.57,
+        "measured_range": [
+          8.477089405059814,
+          24.916013956069946
+        ]
+      }
+    }
+  ],
+  "cluster_comparison": [],
+  "failures": []
+}

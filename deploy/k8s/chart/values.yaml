@@ -18,6 +18,17 @@ scaling:
   pollingInterval: 2
   scaleDownSeconds: 60
 
+# ml-reactive / ml-predictive controller (M16). Capacity is the frozen pilot capacity.
+autoscaler:
+  capacity: 130.5
+  targetDelaySeconds: 3
+  readyDelaySeconds: 5
+  scaleDownHoldSeconds: 10
+  scaleDownIntervalSeconds: 20
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+
 run:
   name: demo
   seed: 42

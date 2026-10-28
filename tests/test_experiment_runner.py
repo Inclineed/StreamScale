@@ -5,7 +5,37 @@ import json
 
 import pytest
 
-from experiments.run import ROOT, configuration, freeze, plan, validate_matrix, verify_evidence
+from experiments.metrics import sale_metrics
+from experiments.run import (
+    ROOT,
+    configuration,
+    freeze,
+    load_protocol,
+    measured_cell,
+    plan,
+    protocol_modes,
+    select,
+    validate_matrix,
+    verify_evidence,
+)
+
+
+def test_sale_metrics_count_readiness_responses_and_changes():
+    samples = [
+        {"time": 100 + second, "ready": ready, "desired": desired}
+        for second, (ready, desired) in enumerate(
+            [(1, 1)] * 15 + [(1, 3)] * 4 + [(3, 3)] * 30 + [(1, 1)] * 10 + [(3, 3)] * 10
+        )
+    ]
+    result = sale_metrics(samples, 100, [15, 60])
+    assert result["sales"] == 2
+    assert result["mean_ready_at_sale_start"] == 2.0
+    assert result["min_ready_at_sale_start"] == 1
+    assert result["mean_sale_response_seconds"] == 4
+    assert result["scale_changes"] == 3
+    # Warmups and steady runs have no sale; that must not fail the capture.
+    quiet = sale_metrics(samples, 100, [])
+    assert quiet["sales"] == 0 and quiet["mean_ready_at_sale_start"] is None
 
 
 def test_exporter_waits_for_successful_startup_probe(monkeypatch):
@@ -39,6 +69,39 @@ def test_exporter_waits_for_successful_startup_probe(monkeypatch):
     monkeypatch.setattr(runner.time, "sleep", lambda _: None)
     assert runner.current_exporter("run") == "exporter"
     assert not responses
+
+
+def test_v3_plan_pairs_all_five_modes_on_reserved_seeds():
+    protocol = load_protocol("v3")
+    cells = plan(protocol)
+    assert len(cells) == len({cell["key"] for cell in cells}) == 75
+    assert cells == plan(protocol)
+    frozen = freeze(protocol, 130.497)
+    assert frozen["rates"] == {"steady": 52, "surge": 390}
+    assert frozen["model"]["training_seeds"].startswith("train:")
+    assert frozen["autoscaler"]["capacity"] == 130.497
+    seeds = set()
+    for cell in cells:
+        seeded, config = measured_cell(frozen, cell)
+        assert seeded["shape_seed"].startswith("eval:")
+        assert config["model_sha256"] == frozen["model"]["sha256"]
+        seeds.add((cell["scenario"], cell["repetition"], seeded["seed"], seeded["shape_seed"]))
+    # One seed pair per (scenario, repetition), shared by every mode.
+    assert len(seeds) == 15
+    repeated = frozen["scenarios"]["repeated-sales"]["repetitions"]
+    assert len({json.dumps(item["schedule"]) for item in repeated.values()}) == 3
+    overload = frozen["scenarios"]["overload-recovery"]["repetitions"]["1"]
+    assert overload["recovery_transition_seconds"] == 35
+    subset = select(cells, {"lag-keda", "ml-predictive"}, {"ramp", "repeated-sales"}, 1)
+    assert len(subset) == 4
+
+
+def test_v2_plan_is_unchanged_by_m16():
+    protocol = load_protocol("v2")
+    assert protocol_modes(protocol) == ("fixed", "cpu-hpa", "lag-keda")
+    frozen = freeze(protocol, 130.497)
+    cell, config = measured_cell(frozen, plan(protocol)[0])
+    assert "autoscaler" not in config and "shape_seed" not in cell
 
 
 def test_plan_has_every_cell_once_in_seeded_order():

@@ -4,18 +4,64 @@ import json
 import time
 from types import SimpleNamespace
 
+from access import fetch, forward
 from addons import main as install_addons
 from manage import CLUSTER, OUTPUT, TOOLS, build, call, cluster, deploy, kubectl, workflow
 
 from streamscale.run_artifacts import utc_now, write_json
 
-MODES = ("fixed", "cpu-hpa", "lag-keda")
+MODES = ("fixed", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive")
+# M7's frozen v2 matrix keeps exactly these three modes.
+V2_MODES = ("fixed", "cpu-hpa", "lag-keda")
+ML_MODES = ("ml-reactive", "ml-predictive")
+
+
+def autoscaler_state(objects, mode):
+    """Check the ML controller Deployment: present and matching only in ML modes."""
+    controllers = [
+        row
+        for row in objects
+        if row["kind"] == "Deployment" and row["metadata"]["name"] == "streamscale-autoscaler"
+    ]
+    if mode not in ML_MODES:
+        if controllers:
+            raise RuntimeError(f"{mode} mode has an active ML autoscaler")
+        return None
+    if len(controllers) != 1:
+        raise RuntimeError(f"{mode} mode needs exactly one ML autoscaler Deployment")
+    controller = controllers[0]
+    template = controller["spec"]["template"]
+    policy = mode.removeprefix("ml-")
+    container = template["spec"]["containers"][0]
+    arguments = container.get("args", [])
+    if template["metadata"]["annotations"].get("streamscale/policy") != policy or (
+        arguments[arguments.index("--policy") + 1] != policy
+    ):
+        raise RuntimeError(f"{mode} autoscaler runs the wrong policy")
+    mounts = container.get("volumeMounts", [])
+    volumes = template["spec"].get("volumes", [])
+    if mounts or volumes or container.get("env"):
+        raise RuntimeError("ML autoscaler must not mount run artifacts or credentials")
+    pods = [
+        row
+        for row in objects
+        if row["kind"] == "Pod"
+        and row["metadata"].get("labels", {}).get("app") == "streamscale-autoscaler"
+        and not row["metadata"].get("deletionTimestamp")
+    ]
+    return {
+        "policy": policy,
+        "pods": len(pods),
+        "ready": int(controller.get("status", {}).get("readyReplicas", 0) or 0),
+        "image": container["image"],
+    }
 
 
 def mode_snapshot(mode):
     objects = json.loads(
         kubectl("get", "deployment,pod,hpa,scaledobject", "-o", "json", capture=True).stdout
     )["items"]
+    autoscaler = autoscaler_state(objects, mode)
     deployment = next(
         row
         for row in objects
@@ -60,7 +106,10 @@ def mode_snapshot(mode):
             raise RuntimeError("CPU-HPA mode is not isolated")
         if hpas[0]["spec"]["metrics"][0]["type"] != "Resource":
             raise RuntimeError("CPU-HPA is not driven by resource metrics")
-    else:
+    elif mode in ML_MODES:
+        if hpas or scaled:
+            raise RuntimeError(f"{mode} mode shares the consumer with another autoscaler")
+    elif mode == "lag-keda":
         if len(scaled) != 1 or any(
             row["metadata"]["name"] != "keda-hpa-streamscale-consumer" for row in hpas
         ):
@@ -68,6 +117,8 @@ def mode_snapshot(mode):
         spec = scaled[0]["spec"]
         if spec["minReplicaCount"] != 1 or spec["maxReplicaCount"] != 3:
             raise RuntimeError("KEDA replica bounds differ from 1–3")
+    else:
+        raise RuntimeError(f"Unknown scaling mode {mode!r}")
     for hpa in hpas:
         if hpa["spec"]["minReplicas"] != 1 or hpa["spec"]["maxReplicas"] != 3:
             raise RuntimeError("HPA replica bounds differ from 1–3")
@@ -78,6 +129,7 @@ def mode_snapshot(mode):
         "ready": ready,
         "hpas": hpas,
         "scaledobjects": scaled,
+        "autoscaler": autoscaler,
         "pods": pods,
     }
 
@@ -95,6 +147,14 @@ def inspect(directory):
         check=False,
     )
     return json.loads(result.stdout) if result.returncode == 0 else None
+
+
+def decisions(folder):
+    """Retain the ML controller's recent decisions for an ML-mode exercise."""
+    with forward("autoscaler") as endpoint:
+        payload = json.loads(fetch(endpoint + "/decisions"))
+    write_json(folder / "autoscaler-decisions.json", payload)
+    return payload
 
 
 def exercise(metadata, mode, orders=3000, timeout=300):
@@ -140,6 +200,10 @@ def exercise(metadata, mode, orders=3000, timeout=300):
         raise RuntimeError(f"{mode} did not reconcile before the scaling deadline")
     if mode != "fixed" and maximum < 2:
         raise RuntimeError(f"{mode} never added a ready consumer under backlog")
+    if mode in ML_MODES:
+        recorded = decisions(folder)["decisions"]
+        if not any(item["applied"] and item["replicas"] > 1 for item in recorded):
+            raise RuntimeError(f"{mode} controller recorded no applied scale-up")
     write_json(folder / "inspection.json", reconciliation)
     result = {
         "status": "passed",

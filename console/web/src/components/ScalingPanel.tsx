@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Live } from "../api";
 import { MODE_LABELS, TERMS } from "../analogy";
-import { count, percent } from "../format";
+import { count, percent, rate } from "../format";
 import { useLens } from "../lens";
 import { useOperation } from "../operations";
 
@@ -14,8 +14,38 @@ type Settings = {
   polling_interval: number;
 };
 
+export type Decision = {
+  at: number;
+  replicas: number;
+  previous: number;
+  reason: string;
+  arrival_rate: number | null;
+  forecast_rate: number | null;
+  predicted_delay: Record<string, number>;
+  learned: { bias: number; capacity: number; ready_delay: number } | null;
+  ready: number;
+  lag: number;
+  applied: boolean;
+};
+
+export type AutoscalerState = {
+  status: string;
+  policy: { policy: string; model_sha256?: string } | null;
+  target_delay_seconds: number;
+  capacity_per_consumer: number;
+  last: Decision | null;
+  recent: Decision[];
+};
+
 export type ScalingState = {
-  mode: "fixed" | "manual" | "cpu-hpa" | "lag-keda" | null;
+  mode:
+    | "fixed"
+    | "manual"
+    | "cpu-hpa"
+    | "lag-keda"
+    | "ml-reactive"
+    | "ml-predictive"
+    | null;
   override: false | { replicas: number; since: number; base: string };
   manual_replicas: number;
   settings: Settings;
@@ -41,7 +71,92 @@ export type ScalingState = {
   };
 };
 
-const MODES = ["fixed", "manual", "cpu-hpa", "lag-keda"] as const;
+const MODES = [
+  "fixed",
+  "manual",
+  "cpu-hpa",
+  "lag-keda",
+  "ml-reactive",
+  "ml-predictive",
+] as const;
+
+function DecisionPanel({
+  autoscaler,
+  store,
+}: {
+  autoscaler: AutoscalerState | undefined;
+  store: boolean;
+}) {
+  const last = autoscaler?.last;
+  if (!autoscaler) return null;
+  const changes = (autoscaler.recent ?? []).filter(
+    (row) => row.replicas !== row.previous,
+  );
+  return (
+    <div className="decision" data-testid="ml-decision">
+      <h4>{store ? "Why the manager chose this" : "Latest controller decision"}</h4>
+      <p className="hint" data-testid="ml-status">
+        {autoscaler.status}
+      </p>
+      {last && (
+        <>
+          <dl>
+            <dt>{store ? "Shoppers arriving now" : "Arrival rate"}</dt>
+            <dd>{rate(last.arrival_rate)}</dd>
+            <dt>{store ? "Expected peak, next 20 s" : "Planned peak arrivals"}</dt>
+            <dd data-testid="ml-forecast">{rate(last.forecast_rate)}</dd>
+            <dt>
+              {store
+                ? "Predicted wait with 1 · 2 · 3 cashiers"
+                : "Predicted delay at 1 · 2 · 3 replicas"}
+            </dt>
+            <dd data-testid="ml-delays">
+              {[1, 2, 3]
+                .map((n) =>
+                  last.predicted_delay[String(n)] === undefined
+                    ? "—"
+                    : `${last.predicted_delay[String(n)].toFixed(1)} s`,
+                )
+                .join(" · ")}{" "}
+              (target {autoscaler.target_delay_seconds} s)
+            </dd>
+            {last.learned && (
+              <>
+                <dt>{store ? "Learned so far" : "Online estimates"}</dt>
+                <dd data-testid="ml-learned">
+                  {last.learned.capacity.toFixed(0)}/s for one{" "}
+                  {store ? "cashier" : "consumer"} ·{" "}
+                  {last.learned.ready_delay.toFixed(1)} s start-up · forecast
+                  bias {last.learned.bias >= 0 ? "+" : ""}
+                  {last.learned.bias.toFixed(0)}/s
+                </dd>
+              </>
+            )}
+          </dl>
+          <p data-testid="ml-reason">
+            <strong>
+              {last.previous} → {last.replicas}
+            </strong>{" "}
+            {last.reason}
+          </p>
+        </>
+      )}
+      {changes.length > 0 && (
+        <ul className="plain">
+          {changes
+            .slice(-4)
+            .reverse()
+            .map((row) => (
+              <li key={row.at}>
+                {new Date(row.at * 1000).toLocaleTimeString("en-GB")} ·{" "}
+                {row.previous} → {row.replicas}: {row.reason}
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function ReplicaButtons({
   value,
@@ -97,7 +212,12 @@ export function ScalingPanel({ live }: { live: Live }) {
       "scaling.settings",
       "scaling.reapply",
     ].some(operation.busy);
-  const autoscaled = scaling.mode === "cpu-hpa" || scaling.mode === "lag-keda";
+  const machine =
+    scaling.mode === "ml-reactive" || scaling.mode === "ml-predictive";
+  const kubernetesAutoscaler =
+    scaling.mode === "cpu-hpa" || scaling.mode === "lag-keda";
+  const autoscaled = kubernetesAutoscaler || machine;
+  const autoscaler = live.sample?.autoscaler as AutoscalerState | undefined;
   const override = scaling.override || null;
   const controllers = live.sample?.kubernetes.controllers ?? [];
   const error =
@@ -202,8 +322,12 @@ export function ScalingPanel({ live }: { live: Live }) {
                 Override active since{" "}
                 {new Date(override.since * 1000).toLocaleTimeString("en-GB")}:
                 the{" "}
-                {scaling.mode === "cpu-hpa" ? "CPU HPA" : "KEDA ScaledObject"}{" "}
-                is removed while you hold {override.replicas}{" "}
+                {scaling.mode === "cpu-hpa"
+                  ? "CPU HPA is removed"
+                  : machine
+                    ? "ML controller is paused"
+                    : "KEDA ScaledObject is removed"}{" "}
+                while you hold {override.replicas}{" "}
                 {store ? "cashiers" : "replicas"}.
               </p>
               <ReplicaButtons
@@ -240,6 +364,8 @@ export function ScalingPanel({ live }: { live: Live }) {
               />
             </>
           )}
+          {machine && <DecisionPanel autoscaler={autoscaler} store={store} />}
+          {kubernetesAutoscaler && (
           <details className="disclosure">
             <summary>
               Autoscaler settings{" "}
@@ -341,6 +467,7 @@ export function ScalingPanel({ live }: { live: Live }) {
               {draft && <button onClick={() => setDraft(null)}>Discard</button>}
             </div>
           </details>
+          )}
         </>
       )}
 

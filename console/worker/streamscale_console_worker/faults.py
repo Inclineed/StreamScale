@@ -24,6 +24,7 @@ import psycopg
 from streamscale.run_artifacts import utc_now, write_json
 from streamscale_console_worker import control
 from streamscale_console_worker.kube import CONSUMER_APP, POSTGRES_POD
+from streamscale_console_worker.scaling import CONTROLLED
 
 CATALOG = {
     "restart_consumer": {
@@ -215,7 +216,7 @@ class FaultSupervisor:
                 "override": scaling.state["override"],
                 "manual_replicas": scaling.state["manual_replicas"],
             }
-            if scaling.state["mode"] in ("cpu-hpa", "lag-keda"):
+            if scaling.state["mode"] in CONTROLLED:
                 scaling.enter_override({"replicas": 0})
             else:
                 scaling.set_mode({"mode": "manual", "replicas": 0})
@@ -309,7 +310,7 @@ class FaultSupervisor:
         deadline = time.monotonic() + 120
         while scaling.state["transition"]["state"] == "running" and time.monotonic() < deadline:
             time.sleep(0.5)
-        if previous.get("mode") in ("cpu-hpa", "lag-keda") and not previous.get("override"):
+        if previous.get("mode") in CONTROLLED and not previous.get("override"):
             if scaling.state["override"]:
                 scaling.release_override({})
             else:

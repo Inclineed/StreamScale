@@ -1,0 +1,68 @@
+{
+  "objective": "max share of runs with p95 <= target, then min median replica-seconds",
+  "tie_tolerance": 0.02,
+  "tuning_seeds": "train:200000..train:200019",
+  "candidates": [
+    {
+      "quantile": 0.5,
+      "target_met": 0.5,
+      "median_replica_seconds": 134.0,
+      "per_shape_target_met": {
+        "steady": 1.0,
+        "flash-sale": 0.0,
+        "overload-recovery": 0.0,
+        "ramp": 1.0,
+        "repeated-sales": 0.5
+      }
+    },
+    {
+      "quantile": 0.6,
+      "target_met": 0.5,
+      "median_replica_seconds": 134.0,
+      "per_shape_target_met": {
+        "steady": 1.0,
+        "flash-sale": 0.0,
+        "overload-recovery": 0.0,
+        "ramp": 1.0,
+        "repeated-sales": 0.5
+      }
+    },
+    {
+      "quantile": 0.7,
+      "target_met": 0.5,
+      "median_replica_seconds": 135.5,
+      "per_shape_target_met": {
+        "steady": 1.0,
+        "flash-sale": 0.0,
+        "overload-recovery": 0.0,
+        "ramp": 1.0,
+        "repeated-sales": 0.5
+      }
+    },
+    {
+      "quantile": 0.8,
+      "target_met": 0.52,
+      "median_replica_seconds": 134.0,
+      "per_shape_target_met": {
+        "steady": 1.0,
+        "flash-sale": 0.0,
+        "overload-recovery": 0.0,
+        "ramp": 1.0,
+        "repeated-sales": 0.6
+      }
+    },
+    {
+      "quantile": 0.9,
+      "target_met": 0.55,
+      "median_replica_seconds": 138.0,
+      "per_shape_target_met": {
+        "steady": 1.0,
+        "flash-sale": 0.0,
+        "overload-recovery": 0.0,
+        "ramp": 1.0,
+        "repeated-sales": 0.75
+      }
+    }
+  ],
+  "chosen_quantile": 0.9
+}

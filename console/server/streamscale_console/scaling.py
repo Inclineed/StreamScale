@@ -12,7 +12,7 @@ import time
 from streamscale_console.operations import Rejected
 from streamscale_console.telemetry import AgentRejected
 
-MODES = {"fixed", "manual", "cpu-hpa", "lag-keda"}
+MODES = {"fixed", "manual", "cpu-hpa", "lag-keda", "ml-reactive", "ml-predictive"}
 
 
 class Component:
@@ -39,7 +39,7 @@ class Component:
 
     def check_mode(self, params):
         if params.get("mode") not in MODES:
-            raise Rejected("Mode must be fixed, manual, cpu-hpa or lag-keda")
+            raise Rejected("Mode must be one of " + ", ".join(sorted(MODES)))
 
     def state(self):
         return (self.console.hub.latest or {}).get("scaling") or {}
