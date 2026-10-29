@@ -62,7 +62,8 @@ test("sale drafts survive navigation and the lab shows one experiment at a time"
     page
       .getByRole("radiogroup", { name: "Presets", exact: true })
       .getByRole("radio"),
-  ).toHaveCount(4);
+    // Four measured M7 shapes plus M16's gradual ramp and repeated sales.
+  ).toHaveCount(6);
   await expect(page.getByLabel("Phase 1 seconds")).toBeHidden();
   await page
     .locator("summary")
