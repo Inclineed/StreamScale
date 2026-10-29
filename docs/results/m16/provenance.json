@@ -1,0 +1,36 @@
+{
+  "campaign": "campaign-20261028T225554-fc5dec",
+  "started_at": "2026-10-28T22:55:54.035503Z",
+  "ended_at": "2026-10-29T03:22:06.258031Z",
+  "image": {
+    "git_commit": "a35190b41f5adc01208dfe52562e27313ea6bf16",
+    "git_dirty": false,
+    "image": "streamscale:fa2bb34b0d8ce0d1",
+    "image_id": "sha256:f1b8ded9a1fca009b5b229da6f979779f6090c27c7534edf323b450208710408",
+    "source_sha256": "6c486631312a4ad64008d4328a0a3bd1a2ea4ba74f128ba5df84bd22e6fc8225"
+  },
+  "fingerprint": "fcf787445a1d69fc3fb9c4cc0c4dfada33f84b51105c8f18629226329c0ba2da",
+  "host": {
+    "Architecture": "x86_64",
+    "MemTotal": 33339256832,
+    "NCPU": 28,
+    "OperatingSystem": "Ubuntu 22.04.5 LTS",
+    "ServerVersion": "29.1.3"
+  },
+  "node_versions": [
+    {
+      "kubeletVersion": "v1.37.0",
+      "kernelVersion": "6.8.0-138-generic",
+      "osImage": "Debian GNU/Linux 13 (trixie)",
+      "containerRuntimeVersion": "containerd://2.3.4",
+      "architecture": "amd64"
+    }
+  ],
+  "source_artifact_directory": "artifacts/experiments/v3/campaign-20261028T225554-fc5dec",
+  "source_checksums": {
+    "campaign.json": "a20696113c19ef73df2b9b25fd1ee24d9aeb5830a4fbaa72f53734aba0c756ef",
+    "frozen-protocol.json": "554bf4f58bc4de8e1f0681ab0d2cad7a744161cc647be81d39f2ca6de230a6fd",
+    "summary.csv": "654e4f4ba1f172b6633294d9eebf8bb3c44ea11917e85b188417d091ce74c73e",
+    "comparison.csv": "654e4f4ba1f172b6633294d9eebf8bb3c44ea11917e85b188417d091ce74c73e"
+  }
+}

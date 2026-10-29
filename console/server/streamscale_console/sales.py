@@ -28,6 +28,16 @@ DEFAULT_FAULTS = {"malformed_pct": 1.0, "duplicate_pct": 2.0, "late_pct": 5.0}
 QUERIES = {"facts.recent", "order", "event", "dlq.recent"}
 
 
+RECONCILE_ATTEMPTS = 8
+RECONCILE_RETRY_SECONDS = 5
+TRANSIENT = ("_ALL_BROKERS_DOWN", "_TRANSPORT", "_TIMED_OUT", "BROKER_NOT_AVAILABLE")
+
+
+def transient(error):
+    """Broker-connectivity failures that clear once Kafka is reachable again."""
+    return bool(error) and any(code in str(error) for code in TRANSIENT)
+
+
 def presets(protocol_path=PROTOCOL):
     """Presets reuse the frozen M7 rates and seeds, so workloads match the measured ones."""
     try:
@@ -444,6 +454,21 @@ class Component:
         self.publish()
         return {"id": identifier}
 
+    async def reconcile_once(self, operation, client, run_name):
+        try:
+            await client.call("POST", "/v1/command/reconcile", {"run_name": run_name})
+        except AgentRejected as error:
+            raise Rejected(str(error)) from None
+        self.console.coordinator.report(operation, "Reading the source range, SQL and DLQ")
+        deadline = time.monotonic() + 600
+        while True:
+            job = await client.call("GET", f"/v1/query/reconciliation?run={run_name}", timeout=30)
+            if job["state"] != "running":
+                return job
+            if time.monotonic() > deadline:
+                raise RuntimeError("Reconciliation did not finish within ten minutes")
+            await asyncio.sleep(1)
+
     async def reconcile(self, operation):
         record = self.store.load(str(operation.params.get("session", "")))
         client = self.console.hub.client
@@ -453,21 +478,16 @@ class Component:
             if time.monotonic() > deadline:
                 raise RuntimeError("The cluster agent did not become reachable")
             await asyncio.sleep(1)
-        try:
-            await client.call("POST", "/v1/command/reconcile", {"run_name": record["run_name"]})
-        except AgentRejected as error:
-            raise Rejected(str(error)) from None
-        self.console.coordinator.report(operation, "Reading the source range, SQL and DLQ")
-        deadline = time.monotonic() + 600
-        while True:
-            job = await client.call(
-                "GET", f"/v1/query/reconciliation?run={record['run_name']}", timeout=30
-            )
-            if job["state"] != "running":
+        for attempt in range(RECONCILE_ATTEMPTS):
+            job = await self.reconcile_once(operation, client, record["run_name"])
+            if job["state"] != "error" or not transient(job.get("error")):
                 break
-            if time.monotonic() > deadline:
-                raise RuntimeError("Reconciliation did not finish within ten minutes")
-            await asyncio.sleep(1)
+            # Right after a broker outage the agent's clients may still be reconnecting;
+            # the data is durable, so retry instead of leaving the session unreconciled.
+            self.console.coordinator.report(
+                operation, f"Kafka not reachable yet; retrying ({attempt + 1})"
+            )
+            await asyncio.sleep(RECONCILE_RETRY_SECONDS)
         if job["state"] == "error":
             raise RuntimeError(job.get("error", "Reconciliation failed"))
         result = job["result"]

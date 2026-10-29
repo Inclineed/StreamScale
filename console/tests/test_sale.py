@@ -166,3 +166,12 @@ def test_forecastable_presets_are_valid_v3_sales():
         )
         assert accepted["scenario"] == identifier and accepted["mode"] == "ml-predictive"
     assert len(catalog["repeated-sales"]["schedule"]) <= 12
+
+
+def test_only_broker_connectivity_errors_are_retried():
+    from streamscale_console.sales import transient
+
+    down = 'KafkaException: KafkaError{code=_ALL_BROKERS_DOWN,val=-187,str="..."}'
+    assert transient(down)
+    assert not transient("missing acknowledged events")
+    assert not transient(None)

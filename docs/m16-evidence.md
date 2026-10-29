@@ -138,7 +138,53 @@ Frozen after the pilot: controller settings in `experiments/protocols/v3.json`
 `train:` seeds, quantile 0.9). The protocol pins the hash; `freeze()` refuses any
 other model.
 
+## Measured campaign (protocol v3)
+
+`./streamscale.sh experiments-v3 --fresh`, campaign `campaign-20261028T225554-fc5dec`,
+2026-10-28T22:55:54Z to 2026-10-29T03:22:06Z, image `streamscale:fa2bb34b0d8ce0d1`
+built from clean commit `a35190b`, forecaster `1c5304be…`. The host was held awake
+with `systemd-inhibit`. Log: `artifacts/logs/m16-campaign.log`.
+
+- 75 of 75 measured runs passed reconciliation before and after the controlled
+  restart; 152 accepted executions (pilot, warmups, measured); 0 excluded attempts.
+- Independent audit passed: 12,049 raw samples, ML isolation in every sample,
+  `eval:` shape seeds disjoint from the forecaster's `train:` seeds, model hash
+  matches the pinned one.
+- Pilot capacity this campaign was 83.77 events/s (M7: 130.50), so rates froze at
+  32/s steady and 250/s surge. The host was slower than during M7; M16 numbers are
+  not directly comparable with M7's.
+- `./streamscale.sh analysis-v3` wrote `docs/results/m16/`; `docs/results/current/`
+  (M7) is unchanged.
+
+Median run p95 latency (s) [min, max] over three repetitions, and median ready
+replica-seconds:
+
+| Scenario | Lag-KEDA | ML-reactive | ML-predictive |
+| --- | --- | --- | --- |
+| steady | 1.12 · 71 | 1.13 · 72 | 1.12 · 71 |
+| flash-sale | 7.16 [6.11, 8.99] · 157 | 3.70 [3.56, 4.09] · 149 | 4.04 [3.66, 4.09] · 149 |
+| overload-recovery | 7.02 [4.50, 7.34] · 194 | 4.32 [3.95, 6.61] · 183 | 5.94 [5.78, 6.64] · 178 |
+| ramp | 5.93 [5.14, 7.44] · 164 | 4.23 [3.78, 7.76] · 155 | 1.61 [1.18, 3.20] · 169 |
+| repeated-sales | 6.23 [3.69, 7.16] · 420 | 3.97 [3.22, 4.36] · 387 | 2.88 [2.61, 4.29] · 403 |
+
+Descriptive reading of this campaign only:
+
+- Both ML modes had lower median p95 than Lag-KEDA in every surge scenario, at
+  similar or lower replica-seconds. Most of that gap is also present for
+  ML-reactive, so it comes from the one-second loop rather than the forecast.
+- The forecast (ML-predictive vs ML-reactive) helped where traffic had structure:
+  ramp 1.61 vs 4.23 s and repeated sales 2.88 vs 3.97 s. It did not help on the
+  unannounced step surges: flash-sale 4.04 vs 3.70 s, overload 5.94 vs 4.32 s.
+- Ranges overlap in several cells (for example ramp ML-reactive [3.78, 7.76]).
+  Three repetitions on one shared node; no statistical significance is claimed.
+- Fixed and CPU-HPA results are in the report; steady load was identical across modes.
+
 ## Next
+
+1. `./streamscale.sh all --no-ui` full acceptance (running).
+2. Commit results locally.
+
+## Previously planned (done)
 
 1. `./streamscale.sh experiments-v3 --fresh` (about 3.5 hours; keep the host awake),
    then `./streamscale.sh analysis-v3`.

@@ -1,0 +1,91 @@
+{
+  "status": "passed",
+  "complete": true,
+  "measured_runs": 75,
+  "accepted_executions": 152,
+  "excluded_attempts": 0,
+  "raw_samples": 12049,
+  "actual_consumer_image_ids": [
+    "docker.io/library/import-2026-10-28@sha256:f3adff61fd9e2d6b41292a6e9f6fe90db6670bdd30189071aac847c873a9f7ab"
+  ],
+  "consumer_resources": [
+    {
+      "limits": {
+        "cpu": "500m",
+        "memory": "256Mi"
+      },
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      }
+    }
+  ],
+  "scenario_logical_sha256": {
+    "overload-recovery/1": [
+      "9009d850948031081537412b290165d93fb422bfd6b456d9a1169e7fb00d4dfb"
+    ],
+    "flash-sale/3": [
+      "a13f15baf016b85aabc24cedac1c2675ed52ec255c3247bd668ece843790ebdd"
+    ],
+    "ramp/2": [
+      "ecb00d762a85c98f0a7f0e433a9fecaa31cc1aebc65dde9d0f3da2092f5ffe6e"
+    ],
+    "flash-sale/2": [
+      "b143dde76e7b220834af3ad2eece4f3342121e60b306ea26701ff55a5dbcf0f2"
+    ],
+    "ramp/1": [
+      "ae4c7e77856ea5dba9a0077cea8553dee09092889bc551417123669ca0a0ea00"
+    ],
+    "repeated-sales/3": [
+      "34cb8afe130cb992a8052ac9c4fb18113df9e2ff1e94477bbc842164ce42d24c"
+    ],
+    "ramp/3": [
+      "d34832c49b6abe2300dcca566a7403081f63380c95edc05d2ec012728d066987"
+    ],
+    "steady/3": [
+      "5564092029107c2571a1f93708d63cb668e251fc6081aefe028510e8ad5cd46f"
+    ],
+    "overload-recovery/3": [
+      "2520129b430f689be7f1e5f6cf43f6de1b6f6a7fdef71622aade8715fb7e9542"
+    ],
+    "flash-sale/1": [
+      "c731226e9e1953a27eb29819afc0de062eaed6438d809524b6246a416dc6c1f7"
+    ],
+    "repeated-sales/2": [
+      "9783fe6d36ac121bcbe81a601b82aa7e6ea7b2da174ea05f5d29eb261396ef69"
+    ],
+    "overload-recovery/2": [
+      "2caee19c1ea94c4101901e7eeeda4903d322e11ea1e4da6393a13b0ee7e8f522"
+    ],
+    "steady/1": [
+      "59293f1d9a33a330595ba3ad5e2dbf30d0efa5f08a2d41c78f5cb9dd8e8fdd67"
+    ],
+    "repeated-sales/1": [
+      "53e118871ad5501400b0af927dd5a42dcdfe58885380cb3d05f049a6b99c4c2e"
+    ],
+    "steady/2": [
+      "cbbb93ff1c91278532a359d80bdc1401a3fd7dced6b73d9cade3d0d63f18825f"
+    ]
+  },
+  "protocol_v3": {
+    "shape_seeds": [
+      "eval:10101",
+      "eval:10102",
+      "eval:10103",
+      "eval:20201",
+      "eval:20202",
+      "eval:20203",
+      "eval:30301",
+      "eval:30302",
+      "eval:30303",
+      "eval:40401",
+      "eval:40402",
+      "eval:40403",
+      "eval:50501",
+      "eval:50502",
+      "eval:50503"
+    ],
+    "model_sha256": "1c5304befb480e2412fe3168ff35ed1db1977b6e557702d739827b0e25edd491"
+  },
+  "scratch": false
+}
