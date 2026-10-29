@@ -13,7 +13,18 @@ from streamscale_console_worker.scaling import (
     expected_controllers,
 )
 
-from .test_scaling import FakeKube, wait
+from .test_scaling import FakeKube
+from .test_scaling import wait as wait_state
+
+
+def wait(scaling):
+    """Wait for the transition to finish *and* release its lock (set after the state)."""
+    transition = wait_state(scaling)
+    deadline = time.monotonic() + 5
+    while not scaling.work.acquire(timeout=0.05):
+        assert time.monotonic() < deadline
+    scaling.work.release()
+    return transition
 
 
 class FakeObserver:
