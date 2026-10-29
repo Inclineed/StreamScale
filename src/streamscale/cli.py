@@ -103,6 +103,9 @@ def main() -> int:
     autoscaler.add_argument("--scale-down-hold", type=float, default=15.0)
     autoscaler.add_argument("--scale-down-margin", type=float, default=0.5)
     autoscaler.add_argument("--stable-group", type=float, default=5.0)
+    autoscaler.add_argument(
+        "--variant", choices=("full", "forecast-only", "adapt-only"), default="full"
+    )
     autoscaler.add_argument("--scale-down-interval", type=float, default=20.0)
     args = parser.parse_args()
     try:
@@ -210,6 +213,7 @@ def main() -> int:
                 DeploymentScaler(args.deployment),
                 args.exporter_url,
                 forecaster,
+                args.variant,
             )
             result = serve_controller(controller, args.metrics_port, stop)
         elif args.command == "bootstrap":

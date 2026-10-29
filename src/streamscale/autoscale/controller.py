@@ -29,12 +29,21 @@ def fetch_text(url, timeout=3):
 class Controller:
     """Testable core of the loop: one ``tick`` reads, decides and (maybe) scales."""
 
-    def __init__(self, policy_name, config: PlannerConfig, scaler, exporter_url, forecaster=None):
+    def __init__(
+        self,
+        policy_name,
+        config: PlannerConfig,
+        scaler,
+        exporter_url,
+        forecaster=None,
+        variant="full",
+    ):
         self.policy_name = policy_name
         self.config = config
         self.scaler = scaler
         self.exporter_url = exporter_url
         self.forecaster = forecaster
+        self.variant = variant
         self.policy = None
         self.run_id = None
         self.decisions = deque(maxlen=KEEP_DECISIONS)
@@ -42,7 +51,7 @@ class Controller:
 
     def reset(self, run_id):
         self.run_id = run_id
-        self.policy = build_policy(self.policy_name, self.config, self.forecaster)
+        self.policy = build_policy(self.policy_name, self.config, self.forecaster, self.variant)
 
     def tick(self, now=None, fetch=fetch_text):
         sample = exporter_sample(fetch(self.exporter_url))
@@ -153,6 +162,7 @@ def serve_controller(controller: Controller, port, stop: Event, interval=1.0):
                         "policy": policy,
                         "run_id": str(described.get("run_id")),
                         "model_sha256": str(described.get("model_sha256", "")),
+                        "variant": str(described.get("variant", "full")),
                     }
                 )
                 success.set(time.time())

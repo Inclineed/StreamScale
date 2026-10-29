@@ -363,6 +363,7 @@ def chart_autoscaler(settings):
         "scaleDownHoldSeconds": settings["scale_down_hold_seconds"],
         "scaleDownMargin": settings["scale_down_margin"],
         "stableGroupSeconds": settings["stable_group_seconds"],
+        "variant": settings.get("variant", "full"),
         "scaleDownIntervalSeconds": settings["scale_down_interval_seconds"],
     }
 
@@ -547,6 +548,7 @@ def capture(metadata, cell, configuration, campaign):
         controller = decisions["controller"]
         row["autoscaler_policy"] = controller.get("policy")
         row["autoscaler_model_sha256"] = controller.get("model_sha256", "")
+        row["autoscaler_variant"] = controller.get("variant", "full")
         row["autoscaler_decisions"] = sum(
             item["run_id"] == run["run_id"] for item in decisions["decisions"]
         )
@@ -804,6 +806,13 @@ def run_campaign(args):
         # Simulator calibration runs on training-namespace shapes, never evaluation ones.
         protocol = protocol | {"shape_seed_namespace": "train"}
         destination = DESTINATIONS[name] / "calibration"
+    variant = getattr(args, "variant", None)
+    if variant:
+        # Follow-up ablation of ml-predictive: same frozen protocol, model and seeds, with
+        # one switch changed. Never reported as the M16 campaign.
+        protocol = protocol | {"autoscaler": protocol["autoscaler"] | {"variant": variant}}
+        destination = DESTINATIONS[name] / "followup" / variant
+        scratch = True
     latest = destination / "latest.path"
     current = fingerprint()
     destination.mkdir(parents=True, exist_ok=True)
@@ -844,7 +853,10 @@ def run_campaign(args):
             "protocol_name": name,
             # Scratch campaigns are subsets for checking; analysis refuses to report them.
             "scratch": scratch,
-            "purpose": "calibration" if calibration else ("scratch" if scratch else "evidence"),
+            "purpose": "calibration"
+            if calibration
+            else ("followup" if variant else ("scratch" if scratch else "evidence")),
+            "variant": variant or "full",
             "plan": cells,
             "image": metadata,
             "rows": [],
@@ -964,7 +976,14 @@ def main():
         action="store_true",
         help="Simulator calibration subset on train: shape seeds (protocol v3 only)",
     )
+    scratch.add_argument(
+        "--variant",
+        choices=("full", "forecast-only", "adapt-only"),
+        help="Follow-up ablation of ml-predictive (protocol v3 only)",
+    )
     args = parser.parse_args()
+    if args.variant and args.protocol != "v3":
+        parser.error("--variant needs --protocol v3")
     if args.calibration and args.protocol != "v3":
         parser.error("--calibration needs --protocol v3")
     args.resume = not args.fresh

@@ -26,6 +26,8 @@ autoscaler:
   scaleDownHoldSeconds: 15
   scaleDownMargin: 0.5
   stableGroupSeconds: 5
+  # M16 follow-up ablation of ml-predictive: full | forecast-only | adapt-only
+  variant: full
   scaleDownIntervalSeconds: 20
   resources:
     requests: {cpu: 50m, memory: 64Mi}

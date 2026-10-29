@@ -103,3 +103,29 @@ def test_predictive_adds_consumers_before_a_repeated_sale():
     reactive = run(phases, controller("ml-reactive", CAPACITY), train.load(), starts)
     assert predictive.p95_latency <= reactive.p95_latency
     assert sum(predictive.ready_at_sale_start) >= sum(reactive.ready_at_sale_start)
+
+
+def test_ablation_variants_switch_only_their_component():
+    from streamscale_ml.sim import PolicyController
+
+    from streamscale.autoscale.policy import build_policy
+
+    phases = schedule("ramp", "eval:2", RATES["steady"], RATES["surge"])
+    starts = sale_starts(phases, RATES["steady"])
+    config = PlannerConfig(capacity_per_consumer=CAPACITY)
+    model = load()
+
+    def p95(variant):
+        factory = (
+            (lambda: build_policy("reactive", config))
+            if variant == "reactive"
+            else (lambda: build_policy("predictive", config, model, variant))
+        )
+        return run(phases, PolicyController(factory, variant), train.load(), starts).p95_latency
+
+    # Without forecast or adaptation the predictive policy is the reactive one.
+    assert p95("adapt-only") >= p95("forecast-only") >= p95("full")
+    with pytest.raises(ValueError, match="variant"):
+        build_policy("predictive", config, model, "oracle")
+    with pytest.raises(ValueError, match="predictive policy only"):
+        build_policy("reactive", config, variant="forecast-only")

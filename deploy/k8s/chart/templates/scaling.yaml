@@ -145,6 +145,10 @@ spec:
             - {{ .Values.autoscaler.scaleDownMargin | quote }}
             - --stable-group
             - {{ .Values.autoscaler.stableGroupSeconds | quote }}
+            {{- if eq $policy "predictive" }}
+            - --variant
+            - {{ .Values.autoscaler.variant | default "full" | quote }}
+            {{- end }}
             - --scale-down-interval
             - {{ .Values.autoscaler.scaleDownIntervalSeconds | quote }}
           ports:

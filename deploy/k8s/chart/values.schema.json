@@ -74,6 +74,7 @@
         "scaleDownHoldSeconds": {"type": "number", "minimum": 0},
         "scaleDownMargin": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
         "stableGroupSeconds": {"type": "number", "minimum": 0},
+        "variant": {"enum": ["full", "forecast-only", "adapt-only"]},
         "scaleDownIntervalSeconds": {"type": "number", "minimum": 0}
       }
     },
