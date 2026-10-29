@@ -23,7 +23,7 @@ velocity or fabricated sprint points. Timestamps record observed transitions in 
 | M13 | Large: failure lab and recovery | Validated M12 | Crash/replay and outages recover with correct facts and state | Complete locally; started 2026-10-11T22:54Z, validated 2026-10-12T02:29:10Z |
 | M14 | Medium: replay, comparison, exports, guided demos | Validated M10–M13 | Playback matches evidence; unsuitable runs excluded | Complete locally; started 2026-10-12T02:32Z, validated 2026-10-12T03:06:07Z |
 | M15 | Medium: browser-to-pipeline acceptance | Validated M9–M14 | Sale → overload → scale → fault → recover → reconcile | Complete locally; started 2026-10-12T03:07Z, full launcher validated 2026-10-12T07:32:18Z |
-| M16 | Large: ML predictive autoscaling, ablation, two new shapes, protocol v3 campaign, console mode | Validated M0–M15; user scope change | 75-run v3 matrix reconciled and audited with training/evaluation seed separation; console runs both ML modes | In progress; started 2026-10-28, implementation and five-mode live exercise validated 2026-10-28T17:43Z; measured campaign pending |
+| M16 | Large: ML predictive autoscaling, ablation, two new shapes, protocol v3 campaign, console mode | Validated M0–M15; user scope change | 75-run v3 matrix reconciled and audited with training/evaluation seed separation; console runs both ML modes | Complete locally; started 2026-10-28, campaign 2026-10-28T22:55Z–2026-10-29T03:22Z (75/75, audit passed), full M0–M16 launcher validated 2026-10-29 |
 
 M16 follows [the ML autoscaling design](ml-autoscaling.md); evidence is in `docs/m16-evidence.md`.
 

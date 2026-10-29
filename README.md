@@ -95,11 +95,23 @@ in randomized order. Values are medians.
   <img src="docs/results/current/primary-outcomes.png" alt="Throughput, p95 latency and peak lag for each scenario and scaling mode" width="820">
 </p>
 
-**M16 (in progress):** two more modes, `ml-predictive` (a learned arrival forecast
-driving a one-second planner) and its `ml-reactive` ablation, are implemented and
-pass the live five-mode exercise. Their 75-run measured comparison on five
-scenarios, including a gradual ramp and repeated sales, has not been run yet, so
-no measured result is claimed. See [the design](docs/ml-autoscaling.md).
+**M16: ML predictive autoscaling.** Two more modes were measured in a separate
+75-run campaign (5 modes × 5 scenarios × 3 repetitions): `ml-predictive`, a learned
+arrival forecast driving a one-second planner, and its `ml-reactive` ablation, which
+uses the same planner without the forecast. Median p95 latency:
+
+| M16 scenario | Lag-KEDA | ML-reactive | ML-predictive |
+| --- | ---: | ---: | ---: |
+| Flash sale | 7.16 s | **3.70 s** | 4.04 s |
+| Overload recovery | 7.02 s | **4.32 s** | 5.94 s |
+| Gradual ramp | 5.93 s | 4.23 s | **1.61 s** |
+| Repeated sales | 6.23 s | 3.97 s | **2.88 s** |
+
+Both ML modes used similar or fewer replica-seconds than Lag-KEDA. Most of the gain
+over KEDA comes from the one-second loop. The forecast helped only where traffic had
+a pattern, the ramp and repeated sales. M16 ran on a slower host than M7 (pilot
+84/s vs 131/s), so compare within each campaign only. Same caveats as below. See
+the [M16 report](docs/results/m16/report.md) and [design](docs/ml-autoscaling.md).
 
 **Read the full analysis:** [measured report](docs/results/current/report.md) ·
 [presentation (PDF)](docs/results/current/presentation.pdf) ·
@@ -218,10 +230,10 @@ docs/                 guides, evidence and results
 | M13 | Failure lab and recovery | [m13](docs/m13-evidence.md) |
 | M14 | Replay, comparison and guided demos | [m14](docs/m14-evidence.md) |
 | M15 | Full browser-to-pipeline acceptance | [m15](docs/m15-evidence.md) |
-| M16 | ML-predictive and ML-reactive modes, ramp and repeated-sales shapes, 75-run protocol v3 (campaign pending) | [m16](docs/m16-evidence.md) |
+| M16 | ML-predictive and ML-reactive modes, ramp and repeated-sales shapes, 75-run protocol v3 | [m16](docs/m16-evidence.md) |
 | UI | Focused task pages and mobile layout | [ui-refinement](docs/ui-refinement-evidence.md) |
 
-The complete M0–M15 launcher, including live-cluster and browser acceptance, passed on 2026-10-12.
+The complete M0–M16 launcher, including live-cluster and browser acceptance, passed on 2026-10-29.
 
 </details>
 

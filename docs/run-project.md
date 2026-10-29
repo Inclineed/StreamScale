@@ -300,5 +300,10 @@ retained 27-run audit, M8 regeneration, and 138 + 19 console unit tests, 41 cons
 live-cluster tests and 9 Chrome tests including the full sale → overload → rescue
 → crash → outage → recovery → reconciliation journey. Log:
 `artifacts/m15-full-check.log`; details in [M15 evidence](m15-evidence.md).
+The complete M0–M16 launcher passed on 2026-10-29: 215 unit and 28 integration
+tests, 35 ML tests, all five scaling modes, the retained 75-run M16 matrix and its
+report, and console acceptance (148 + 19 unit, 41 live-cluster, 12 Chrome tests).
+Log: `artifacts/m16-full-check.log`; details in [M16 evidence](m16-evidence.md).
+
 Running services were not stopped by these checks; the console's own agent and the
 shared Kafka/PostgreSQL were scaled only by the failure lab's bounded, restored faults.

@@ -1,9 +1,9 @@
 # M16 evidence: ML predictive autoscaling
 
 Started 2026-10-28 on the user's request to add an ML-driven scaling policy. Design:
-[ML predictive autoscaling](ml-autoscaling.md). State: **implementation complete and
-live-exercised; simulator cluster calibration and the 75-run measured campaign are
-pending.** No measured comparison of the ML modes is claimed yet.
+[ML predictive autoscaling](ml-autoscaling.md). State: **complete locally.** The 75-run campaign
+and its independent audit passed, and so did the full launcher. Results below are
+descriptive (three repetitions, one node).
 
 ## Decisions recorded with the user
 
@@ -179,10 +179,23 @@ Descriptive reading of this campaign only:
   Three repetitions on one shared node; no statistical significance is claimed.
 - Fixed and CPU-HPA results are in the report; steady load was identical across modes.
 
-## Next
+## Full launcher acceptance
 
-1. `./streamscale.sh all --no-ui` full acceptance (running).
-2. Commit results locally.
+`./streamscale.sh all --no-ui` passed on 2026-10-29 (log `artifacts/m16-full-check.log`):
+215 unit and 28 integration tests, 35 ML tests, simulated evaluation, fresh M5
+cluster verification, all five scaling modes, the retained 75-run matrix verified
+by checksums, M16 report regeneration, and console acceptance (148 Python + 19 web
+unit tests, 41 live-cluster tests, 12 Chrome tests). M7's `docs/results/current/`
+was not modified.
+
+Defects found during acceptance, fixed and re-run:
+
+- After the Kafka-outage fault the console's automatic reconciliation hit
+  `_ALL_BROKERS_DOWN` while clients reconnected and only finished 19 minutes later on
+  a server restart (still passed: 482 facts, 0 missing). It now retries transient
+  broker errors.
+- A console unit test raced the scaling lock release; it now waits for the lock.
+- A browser test still expected four sale presets; there are six.
 
 ## Previously planned (done)
 
