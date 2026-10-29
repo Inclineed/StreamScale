@@ -84,7 +84,7 @@ analysis:
 	uv run --project experiments/analysis --frozen python -m experiments.analyze
 
 # M16 protocol v3: five modes × five scenarios × three repetitions, beside M7's results.
-.PHONY: experiments-v3 experiments-v3-fresh experiment-audit-v3 analysis-v3
+.PHONY: experiments-v3 experiments-v3-fresh experiment-audit-v3 analysis-v3 analysis-v3-supplement
 experiments-v3: .tools/bin/kind .tools/bin/kubectl .tools/bin/helm
 	uv run --frozen python -m experiments.run --protocol v3 --resume
 	uv run --frozen python -m experiments.evidence --protocol v3
@@ -98,6 +98,11 @@ experiment-audit-v3:
 
 analysis-v3:
 	uv run --project experiments/analysis --frozen python -m experiments.analyze --protocol v3
+	uv run --frozen python -m experiments.supplement
+
+# Read-only compliance, step-surge diagnosis and ablation supplement (docs/results/m16-supplement).
+analysis-v3-supplement:
+	uv run --frozen python -m experiments.supplement
 
 # Interactive console (M9+): separately locked Python and Node dependencies.
 CONSOLE = uv run --project console --frozen

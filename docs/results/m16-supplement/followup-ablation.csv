@@ -1,0 +1,13 @@
+scenario,mode,variant,repetition,measured_share_within_3s,measured_p95_seconds,predicted_share_of_decisions_within_3s,predicted_median_delay_seconds,replica_seconds,peak_lag
+ramp,ml-predictive,adapt-only,1,0.347,5.693,0.8315,0.13,168.0,1306.0
+ramp,ml-predictive,adapt-only,3,0.4991,4.523,0.8313,0.131,163.9,1010.0
+ramp,ml-predictive,adapt-only,2,0.6068,4.714,0.9747,0.126,150.0,1004.0
+ramp,ml-predictive,forecast-only,1,0.8556,3.824,0.9885,0.138,173.8,709.0
+ramp,ml-predictive,forecast-only,3,0.848,3.816,0.9659,0.133,166.0,774.0
+ramp,ml-predictive,forecast-only,2,0.6468,4.505,0.9615,0.134,149.8,936.0
+ramp,ml-reactive,reactive,2,0.4832,5.137,0.9494,0.125,148.0,1108.0
+ramp,ml-reactive,reactive,3,0.5665,4.286,0.8293,0.13,167.0,966.0
+ramp,ml-predictive,full,1,0.9823,2.729,0.9886,0.135,173.9,530.0
+ramp,ml-predictive,full,3,0.9615,2.879,0.9881,0.136,173.0,585.0
+ramp,ml-reactive,reactive,1,0.327,6.043,0.7955,0.13,171.9,1343.0
+ramp,ml-predictive,full,2,0.8033,3.764,0.9506,0.126,151.9,775.0

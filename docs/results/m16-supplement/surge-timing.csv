@@ -1,0 +1,13 @@
+scenario,mode,repetition,controller_ready_s,first_decision_s,scale_up_requested_s,three_ready_s,forecast_driven_decisions,measured_p95_seconds
+overload-recovery,ml-predictive,3,6.4,4.1,4.1,11.4,0,6.644
+flash-sale,ml-reactive,3,-11.8,-11.4,1.6,9.2,0,3.561
+flash-sale,ml-predictive,3,-9.1,-11.8,2.2,7.0,0,3.658
+overload-recovery,ml-predictive,1,4.2,3.2,3.2,11.2,0,5.779
+flash-sale,ml-predictive,1,-11.1,-12.2,1.8,10.0,0,4.093
+flash-sale,ml-reactive,1,-11.8,-11.6,2.5,7.3,0,3.703
+flash-sale,ml-reactive,2,-12.0,-11.6,2.4,10.0,0,4.094
+overload-recovery,ml-predictive,2,4.5,3.9,3.9,11.4,0,5.941
+overload-recovery,ml-reactive,2,4.7,2.6,2.6,7.7,0,3.946
+overload-recovery,ml-reactive,3,2.6,2.5,2.5,10.6,0,4.323
+overload-recovery,ml-reactive,1,2.7,3.3,3.3,10.8,0,6.61
+flash-sale,ml-predictive,2,-11.4,-11.4,1.6,9.7,0,4.043

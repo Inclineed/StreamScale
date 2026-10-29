@@ -25,8 +25,8 @@ So the controller is model-predictive control over a small queue model:
 
 1. **Observe** each second: per-partition high watermarks and lag from the run
    exporter, desired and ready replicas from the Deployment.
-2. **Forecast** arrivals: a high quantile (0.9 in the packaged model, chosen by
-   tuning) of the peak arrival rate in four windows covering the next 20 s, from
+2. **Forecast** arrivals: a quantile (0.6 in the frozen M16 model, chosen by tuning;
+   0.9 before the scale-in change) of the peak arrival rate in four windows covering the next 20 s, from
    gradient-boosted trees. No
    forecast window falls below the current arrival rate, so the forecast can only
    add consumers earlier than the ablation, never remove them sooner.

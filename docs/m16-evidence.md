@@ -30,7 +30,7 @@ descriptive (three repetitions, one node).
 - Seeded shapes with `train:`/`eval:`/`stress:` namespaces; migration `0002` widens
   the mode and scenario checks (0001 unchanged).
 - `ml/`: simulator, M7 calibration (gate passed), cluster-calibration hook,
-  training, quantile tuning (chose 0.9), offline evaluation.
+  training, quantile tuning (0.9 at first, 0.6 for the frozen model), offline evaluation.
 - Chart: autoscaler Deployment, ServiceAccount and Role (`get` deployment, `get/patch`
   `deployments/scale`, by resource name); no runs volume, ConfigMap or credentials.
 - Runner/audit/analysis: protocol v3, per-protocol folders, paired seeds per
@@ -49,7 +49,7 @@ descriptive (three repetitions, one node).
 | `make ml-test` | 35 passed (tree export matches scikit-learn within 1e-9) |
 | `make console-test` (Python, web) | 147 + 19 passed; web typecheck and build clean |
 | Simulator M7 calibration | Fixed and Lag-KEDA peak lag and replica-seconds within gate |
-| Forecaster hold-out (`train:100000..`) | Pinball 0.058–0.151 vs persistence 0.093–0.369; coverage 0.90 at q=0.9 |
+| Forecaster hold-out (`train:100000..`) | Pinball 0.058–0.151 vs persistence 0.093–0.369; coverage 0.90 at q=0.9 (model before the scale-in change) |
 | `./streamscale.sh scaling` (2026-10-28T17:38–17:43Z) | All five modes passed; both ML modes scaled 1→3 at +1 s and reconciled 5,940 facts |
 | v3 scratch campaign `campaign-20261028T175318-e93b60` | 4 runs passed reconciliation, audit (949 samples) and report |
 
@@ -135,7 +135,8 @@ measures, so it was not tuned away.
 Frozen after the pilot: controller settings in `experiments/protocols/v3.json`
 (target 3 s, ready delay 5 s, hold 15 s, margin 0.5, interval 20 s, stable group
 5 s) and forecaster sha256 `1c5304be…d491` (retrained for the new controller on
-`train:` seeds, quantile 0.9). The protocol pins the hash; `freeze()` refuses any
+`train:` seeds; tuning chose quantile 0.6, the lowest replica-seconds among
+quantiles tied on target compliance; an earlier version of this note said 0.9). The protocol pins the hash; `freeze()` refuses any
 other model.
 
 ## Measured campaign (protocol v3)
@@ -196,6 +197,70 @@ Defects found during acceptance, fixed and re-run:
   broker errors.
 - A console unit test raced the scaling lock release; it now waits for the lock.
 - A browser test still expected four sale presets; there are six.
+
+## Follow-up analysis (2026-10-29)
+
+The M7 and M16 result folders were not modified (their combined sha256 listing is
+unchanged before and after). New, read-only outputs are in
+[`docs/results/m16-supplement/`](results/m16-supplement/report.md), produced by
+`experiments/supplement.py` from the checksum-verified raw evidence.
+
+**Why ML-predictive had higher p95 on flash-sale and overload-recovery.** The
+decision traces show the forecast changed no decision on either step surge: none of
+the six runs had a forecast-driven scale-up, and every scale-up went straight to three
+consumers on the current rate and backlog, as ML-reactive's did. On overload-recovery,
+whose surge starts at publication start, the predictive controller became ready later
+(median +4.5 s against +2.7 s) because it loads a 285 KB forecaster at startup (2.7 s
+at 0.25 CPU). Its scale-up request came 1.3 s later at the median and its peak lag was
+higher in all three repetitions. On flash-sale the controller was ready long before the
+surge; the 0.3 s median p95 gap falls inside both modes' ranges and tracks pod-start
+variance (three consumers ready 4–8 s after the request). Simulating the same seeds
+with forecast and adaptation on or off gives identical outcomes for both shapes.
+
+**Target compliance.** The supplement reports, separately, the measured share of
+events within 3 s (SQL) and the predicted share of controller decisions within 3 s
+(planner output). For example, overload-recovery ML-predictive: measured 52%,
+predicted 76%. The planner excludes uncontrollable seconds and weights decisions,
+not events, so its number is an internal diagnostic, not a latency result.
+
+**Follow-up ablation (measured, ramp, three repetitions each, same session).** The main
+campaign could not separate forecasting from online adaptation, so this was needed.
+`--variant forecast-only` disables the learned bias, capacity and pod delay;
+`adapt-only` ignores the forecast output. Same frozen protocol, model and `eval:`
+seeds; 15 measured runs, all reconciled, each campaign audited.
+
+| Variant | Median p95 (s) | Within 3 s | Peak lag | Replica-s |
+| --- | ---: | ---: | ---: | ---: |
+| ML-reactive | 5.14 | 48% | 1,108 | 167 |
+| adapt-only | 4.71 | 50% | 1,010 | 164 |
+| forecast-only | 3.82 | 85% | 774 | 166 |
+| full (ML-predictive) | 2.88 | 96% | 585 | 173 |
+
+On the ramp, most of the improvement over ML-reactive comes from the forecast; online
+adaptation alone changed little, but combined with the forecast it lowered p95
+further. Descriptive, three repetitions; ranges overlap between adjacent rows (e.g.
+forecast-only 3.82–4.51 s, full 2.73–3.76 s). These follow-up numbers come from a
+later session than the main campaign, so compare them only with each other.
+
+**Reproducibility.**
+
+- Frozen campaign `campaign-20261028T225554-fc5dec`, image `streamscale:fa2bb34b0d8ce0d1`,
+  clean commit `a35190b41f5adc01208dfe52562e27313ea6bf16`.
+- Forecaster sha256 `1c5304befb480e2412fe3168ff35ed1db1977b6e557702d739827b0e25edd491`
+  (quantile 0.6, `train:0..699`), pinned in `experiments/protocols/v3.json`.
+- Follow-up campaigns from commit `5e9d55d` under `artifacts/experiments/v3/followup/`.
+
+```sh
+uv run --frozen python -m experiments.evidence --protocol v3          # re-audit campaign
+make analysis-v3              # frozen report (byte-identical) + supplement
+make analysis-v3-supplement   # supplement only
+# Re-measure the ablation (about 1.5 hours):
+for v in full forecast-only adapt-only; do
+  m=ml-predictive; [ $v = full ] && m=ml-reactive,ml-predictive
+  uv run --frozen python -m experiments.run --protocol v3 --fresh --variant $v \
+      --modes $m --scenarios ramp
+done
+```
 
 ## Previously planned (done)
 

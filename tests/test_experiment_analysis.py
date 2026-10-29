@@ -63,3 +63,63 @@ def test_v3_aggregation_covers_every_mode_scenario_and_new_metric():
     assert len(result) == len(modes) * len(scenarios) * (len(METRICS) + len(V3_METRICS))
     single = [row for row in source if row["repetition"] == 1]
     assert aggregate(single, modes, scenarios, METRICS, repetitions=1)[0]["observed"] == 1
+
+
+def test_supplement_refuses_to_write_frozen_result_folders(monkeypatch, tmp_path):
+    from experiments import supplement
+
+    for folder in ("docs/results/m16", "docs/results/current"):
+        monkeypatch.setattr(
+            "sys.argv", ["supplement", "--campaign", str(tmp_path), "--output", folder]
+        )
+        monkeypatch.chdir(supplement.ROOT)
+        with pytest.raises(SystemExit, match="never written"):
+            supplement.main()
+
+
+def test_predicted_and_measured_compliance_are_separate(tmp_path):
+    import json
+
+    from experiments import supplement
+
+    directory = tmp_path / "run"
+    directory.mkdir()
+    (directory / "sql-measurements.json").write_text(
+        json.dumps(
+            {
+                "facts": [
+                    {"produced_at": "2026-10-29T00:00:00Z", "ingested_at": "2026-10-29T00:00:01Z"},
+                    {"produced_at": "2026-10-29T00:00:00Z", "ingested_at": "2026-10-29T00:00:09Z"},
+                ]
+            }
+        )
+    )
+    (directory / "autoscaler-decisions.json").write_text(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "run_id": "r",
+                        "at": 1793232001,
+                        "replicas": 3,
+                        "predicted_delay": {"1": 9.0, "3": 0.5},
+                    },
+                    {
+                        "run_id": "r",
+                        "at": 1793232002,
+                        "replicas": 1,
+                        "predicted_delay": {"1": 4.0, "3": 0.2},
+                    },
+                ]
+            }
+        )
+    )
+    row = {
+        "run_id": "r",
+        "artifact_directory": str(directory),
+        "measurement_start": "2026-10-29T00:00:00Z",
+        "sampling_ended_at": "2026-10-29T01:00:00Z",
+    }
+    assert supplement.measured_compliance(row) == 0.5
+    share, middle = supplement.predicted_compliance(row)
+    assert share == 0.5 and middle == 2.25

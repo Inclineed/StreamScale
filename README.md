@@ -111,7 +111,10 @@ Both ML modes used similar or fewer replica-seconds than Lag-KEDA. Most of the g
 over KEDA comes from the one-second loop. The forecast helped only where traffic had
 a pattern, the ramp and repeated sales. M16 ran on a slower host than M7 (pilot
 84/s vs 131/s), so compare within each campaign only. Same caveats as below. See
-the [M16 report](docs/results/m16/report.md) and [design](docs/ml-autoscaling.md).
+the [M16 report](docs/results/m16/report.md), the
+[supplement](docs/results/m16-supplement/report.md) (3 s target compliance, why
+predictive lost on step surges, and a forecast-vs-adaptation ablation) and the
+[design](docs/ml-autoscaling.md).
 
 **Read the full analysis:** [measured report](docs/results/current/report.md) ·
 [presentation (PDF)](docs/results/current/presentation.pdf) ·
